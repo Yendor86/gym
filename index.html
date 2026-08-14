@@ -121,6 +121,7 @@
   .chip{padding:9px 14px; border-radius:20px; background:var(--card2); border:1px solid var(--line); color:var(--muted); font-size:.85rem; font-weight:700; cursor:pointer;}
   .chip.on{background:var(--u); border-color:var(--u); color:#fff;}
   .chip.sugg{border-color:var(--gold); color:var(--gold);}
+  .wchip{padding:6px 11px; font-size:.78rem; border-radius:9px;}
   /* preview rows */
   .prow{display:flex; align-items:center; gap:8px; padding:11px 2px; border-bottom:1px solid var(--line);}
   .prow:last-child{border:none;}
@@ -677,9 +678,13 @@ const cu=()=>db.users.find(u=>u.idx===db.current)||db.users[0]||{idx:0,name:'You
 const mine=()=>db.entries.filter(e=>e.user===db.current);
 const score=e=>e.ex==='Bodyweight'? -1 : (BW_MOVES.has(e.ex)&&!e.wt? (e.reps||0) : e1rm(e.wt||0,e.reps||0));
 const volOf=e=>e.ex==='Bodyweight'?0:(e.wt||0)*(e.reps||0)*(e.sets||1);
+const DB_WEIGHTS=[2.5,5,7.5,10,12.5,15,17.5,20,22.5,25,30,35,40];
+const KB_WEIGHTS=[4,6,8,10,12,16,20,24,28,32];
+const parseW=v=>Array.isArray(v)? v : (typeof v==='number'? [v] : String(v||'').split(/[,\s]+/).map(parseFloat).filter(x=>x>0));
 const getEquip=()=>{
   const q=Object.assign({},EQUIP_DEF,db.meta.equipment||{});
-  if(!q.dbw&&q.dbkg) q.dbw=String(q.dbkg);
+  if((!q.dbw||!parseW(q.dbw).length)&&q.dbkg) q.dbw=[q.dbkg];
+  q.dbw=parseW(q.dbw); q.kbw=parseW(q.kbw);
   return q;
 };
 const avail=e=>{ const q=getEquip(); return e.eq.every(t=>q[t]); };
@@ -1388,27 +1393,48 @@ function renderEquip(){
       <span>${EQ_LABEL[k]}</span>
       ${k==='bb'?`<input class="kg" type="number" value="${q.plateskg}" step="5" onchange="updEquip('plateskg',parseFloat(this.value)||0)" title="total kg of plates">`:''}
     </div>`;
-  const wRow=(k,wKey,pKey,ph)=>
-    `<div class="eqrow" style="flex-wrap:wrap;">
+  const wRow=(k,wKey,pKey,std)=>{
+    const own=q[wKey];
+    const all=[...new Set([...std,...own])].sort((a,b)=>a-b);
+    return `<div class="eqrow" style="flex-wrap:wrap;">
       <input type="checkbox" ${q[k]?'checked':''} onchange="updEquip('${k}',this.checked)">
       <span>${EQ_LABEL[k]}</span>
       <div class="seg" style="margin:0; padding:2px; margin-left:auto; flex:0 0 auto;">
         <div class="${!q[pKey]?'on':''}" style="padding:5px 12px;" onclick="updEquip('${pKey}',false)">Single</div>
         <div class="${q[pKey]?'on':''}" style="padding:5px 12px;" onclick="updEquip('${pKey}',true)">Pair</div>
       </div>
-      ${q[k]?`<input type="text" value="${q[wKey]||''}" placeholder="${ph}" style="width:100%; margin-top:6px; padding:9px;" onchange="updEquip('${wKey}',this.value)">`:''}
+      ${q[k]?`<div class="chips" style="width:100%; margin:8px 0 0;">
+        ${all.map(w=>`<div class="chip wchip ${own.includes(w)?'on':''}" onclick="toggleW('${wKey}',${w})">${w}</div>`).join('')}
+        <div class="chip wchip" onclick="addCustomW('${wKey}')">+ other</div>
+      </div>
+      <div class="muted" style="font-size:.68rem; margin-top:4px;">${own.length?'You own: '+own.join(', ')+' kg':'Tap the weights you own'}</div>`:''}
     </div>`;
+  };
   document.getElementById('equipCard').innerHTML=
     ['rack','bb','bench','incline','pullup','dip','box'].map(boolRow).join('')
-    +wRow('db','dbw','dbpair','dumbbell weights kg — e.g. 10, 15, 22.5')
-    +wRow('kb','kbw','kbpair','kettlebell weights kg — e.g. 8, 12, 16, 24')
+    +wRow('db','dbw','dbpair',DB_WEIGHTS)
+    +wRow('kb','kbw','kbpair',KB_WEIGHTS)
     +boolRow('band')
     +'<div class="muted" style="font-size:.7rem; margin-top:8px;">The builder and A–Z library only offer exercises your ticked gear can do. Weights and single/pair are listed so everyone knows what\'s on the rack — synced for the whole household.</div>';
 }
 function updEquip(k,v){
   const q=getEquip(); q[k]=v;
   setMeta('equipment',q);
+  renderEquip();
   toast('Equipment updated ✓');
+}
+function toggleW(key,w){
+  const q=getEquip();
+  const arr=q[key];
+  const i=arr.indexOf(w);
+  if(i>=0) arr.splice(i,1); else arr.push(w);
+  arr.sort((a,b)=>a-b);
+  setMeta('equipment',q);
+  renderEquip();
+}
+function addCustomW(key){
+  const v=parseFloat(prompt('Weight in kg:'));
+  if(v>0) toggleW(key,Math.round(v*10)/10);
 }
 
 /* ================= house league ================= */
