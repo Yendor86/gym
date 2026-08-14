@@ -130,6 +130,20 @@
   .eqrow .kg{width:80px; padding:7px; text-align:center; margin-left:auto;}
   .estbar{display:flex; align-items:center; gap:10px; background:var(--card2); border:1px solid var(--line); border-radius:12px; padding:10px 14px; margin-bottom:10px;}
   .estbar .big{font-size:1.15rem; font-weight:800; color:var(--gold);}
+  /* week strip */
+  .wkwrap{position:relative; padding-top:36px;}
+  .wkwrap svg{position:absolute; top:0; left:0; width:100%; height:44px; pointer-events:none;}
+  .wkdays{display:flex; gap:6px;}
+  .wkday{flex:1; text-align:center; border-radius:12px; padding:8px 2px 7px; background:var(--card2); border:1px solid var(--line); min-width:0;}
+  .wkday .dl{font-size:.6rem; color:var(--muted); text-transform:uppercase; letter-spacing:.5px;}
+  .wkday .fk{font-size:1.05rem; margin:3px 0 1px; height:1.35rem;}
+  .wkday .kg{font-size:.62rem; font-weight:800; color:var(--gold); height:.9rem;}
+  .wkday.on{background:linear-gradient(180deg,var(--u-soft),var(--card2)); border-color:var(--u);}
+  .wkday.today{box-shadow:0 0 0 2px var(--gold);}
+  .wkday.future{opacity:.35;}
+  /* heatmap */
+  .hm{display:grid; grid-auto-flow:column; grid-template-rows:repeat(7,13px); gap:4px; justify-content:space-between;}
+  .hmcell{width:13px; height:13px; border-radius:3.5px; background:var(--card3); cursor:pointer;}
 </style>
 </head>
 <body>
@@ -151,8 +165,10 @@
   <div class="card bigstat" id="tonnage"></div>
   <h2>Strength snapshot <span class="sub" id="snapLabel"></span></h2>
   <div class="card"><div class="chartbox mini"><canvas id="snapChart"></canvas></div></div>
-  <h2>Weekly volume <span class="sub">kg lifted per week</span></h2>
-  <div class="card"><div class="chartbox mini"><canvas id="homeVolChart"></canvas></div></div>
+  <h2>Your week <span class="sub" id="wkSub"></span></h2>
+  <div class="card"><div class="wkwrap" id="weekStrip"></div></div>
+  <h2>Consistency <span class="sub">12 weeks · brighter = bigger day</span></h2>
+  <div class="card"><div class="hm" id="heatmap"></div></div>
   <h2>Recent PBs</h2>
   <div class="card" id="pbFeed"></div>
 </div>
@@ -945,7 +961,8 @@ function renderHome(){
   const fav=Object.keys(counts).sort((a,b)=>counts[b]-counts[a])[0];
   document.getElementById('snapLabel').textContent=fav?(fav+' · est. 1RM'):'log lifts to unlock';
   drawLine('snapChart', fav? seriesFor(fav,'e1rm'):{labels:[],data:[]}, cu().color);
-  drawWeeklyVol('homeVolChart');
+  renderWeekStrip();
+  renderHeatmap();
   const feed=m.filter(e=>pbs.has(e.id)&&e.ex!=='Bodyweight').sort((a,b)=>b.date.localeCompare(a.date)).slice(0,6);
   document.getElementById('pbFeed').innerHTML=feed.length? feed.map(e=>
     `<div class="feeditem"><span class="medal">🏆</span>
@@ -953,6 +970,68 @@ function renderHome(){
       <div style="margin-left:auto;font-weight:800;color:var(--gold);">${e.wt? fmt(e.wt)+'kg × '+e.reps : e.reps+' reps'}</div>
     </div>`).join('')
    :'<div class="empty">PBs land here. First session sets the bar.</div>';
+}
+function dayVols(){
+  const v={};
+  mine().forEach(e=>{ const x=volOf(e); if(e.ex!=='Bodyweight'){ v[e.date]=(v[e.date]||0)+x; } });
+  return v;
+}
+function addDays(d,n){ const x=new Date(d+'T00:00'); x.setDate(x.getDate()+n); return x.toISOString().slice(0,10); }
+const kgShort=v=>v>=1000?((Math.round(v/100)/10)+'t'):Math.round(v)+'';
+function renderWeekStrip(){
+  const vols=dayVols(), ws=weekStart(today()), t=today();
+  const days=[]; let wkVol=0, sess=0;
+  for(let i=0;i<7;i++){
+    const d=addDays(ws,i), v=vols[d]||0;
+    days.push({d,v}); if(v>0&&d<=t){ wkVol+=v; sess++; }
+  }
+  // day streak ending today
+  let dstreak=0, cur=t;
+  while(vols[cur]>0){ dstreak++; cur=addDays(cur,-1); }
+  document.getElementById('wkSub').textContent=(sess?sess+' session'+(sess>1?'s':'')+' · '+kgShort(wkVol)+' lifted':'no sessions yet')+(dstreak>1?' · 🔥'+dstreak+' days straight':'');
+  const max=Math.max(...days.map(x=>x.v),1);
+  // sparkline over the tiles
+  const pts=days.map((x,i)=>{
+    const px=(i+0.5)/7*100, py=40-(x.v/max)*34;
+    return px.toFixed(1)+','+py.toFixed(1);
+  }).join(' ');
+  const anyVol=days.some(x=>x.v>0);
+  const svg=anyVol?`<svg viewBox="0 0 100 44" preserveAspectRatio="none">
+      <polyline points="${pts}" fill="none" stroke="var(--gold)" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" opacity="0.9"/>
+      ${days.map((x,i)=>x.v>0?`<circle cx="${((i+0.5)/7*100).toFixed(1)}" cy="${(40-(x.v/max)*34).toFixed(1)}" r="2.1" fill="var(--gold)"/>`:'').join('')}
+    </svg>`:'';
+  const DL=['M','T','W','T','F','S','S'];
+  document.getElementById('weekStrip').innerHTML=svg+
+    '<div class="wkdays">'+days.map((x,i)=>{
+      const future=x.d>t, isToday=x.d===t, on=x.v>0;
+      return `<div class="wkday ${on?'on':''} ${isToday?'today':''} ${future?'future':''}">
+        <div class="dl">${DL[i]}</div>
+        <div class="fk">${on?'🔥':(future?'':'·')}</div>
+        <div class="kg">${on?kgShort(x.v):''}</div>
+      </div>`;
+    }).join('')+'</div>';
+}
+function renderHeatmap(){
+  const vols=dayVols(), t=today(), ws=weekStart(t);
+  const nz=Object.values(vols).filter(v=>v>0).sort((a,b)=>a-b);
+  const q=p=>nz.length?nz[Math.min(nz.length-1,Math.floor(nz.length*p))]:1;
+  const q1=q(0.25), q2=q(0.5), q3=q(0.75);
+  const c=cu().color, n=parseInt(c.slice(1),16), rgb=((n>>16)&255)+','+((n>>8)&255)+','+(n&255);
+  let html='';
+  for(let w=11;w>=0;w--){
+    const colStart=addDays(ws,-7*w);
+    for(let i=0;i<7;i++){
+      const d=addDays(colStart,i), v=vols[d]||0;
+      let bg='var(--card3)';
+      if(v>0){
+        const a=v<=q1?0.3:v<=q2?0.55:v<=q3?0.8:1;
+        bg=`rgba(${rgb},${a})`;
+      }
+      const label=new Date(d+'T00:00').toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'});
+      html+=`<div class="hmcell" style="background:${bg};${d>t?'opacity:.25;':''}" onclick="toast('${label} — ${v>0?kgShort(v)+' lifted':'rest day'}')"></div>`;
+    }
+  }
+  document.getElementById('heatmap').innerHTML=html;
 }
 function pbIds(){
   const best={}, ids=new Set();
