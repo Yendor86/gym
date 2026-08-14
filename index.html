@@ -181,6 +181,7 @@
     <div class="chips" id="groupChips"></div>
     <div class="chips" id="suggChip"></div>
     <button onclick="generateWorkout()" style="margin-top:8px;">Generate Workout ⚡</button>
+    <button class="ghost" style="margin-top:8px;" onclick="openPreview({name:'Custom Workout',items:[],src:'build'});addExercisePicker()">📝 Build from scratch — full A–Z</button>
     <button class="ghost" style="margin-top:8px;" onclick="showPanel('train')">Back</button>
   </div>
 </div>
@@ -361,6 +362,10 @@
   <div class="box">
     <div style="font-weight:800;">Exercise library <span class="muted" style="font-weight:400; font-size:.75rem;">A–Z · filtered to your equipment</span></div>
     <input id="pickSearch" placeholder="Search…" style="margin-top:10px;" oninput="renderPicker()">
+    <div class="eqrow" style="border:none; padding:8px 0 0;">
+      <input type="checkbox" id="pickAllBox" onchange="pickAll=this.checked;renderPicker()">
+      <span class="muted" style="font-size:.8rem;">Show everything (incl. gear we don't have)</span>
+    </div>
     <div id="pickList" style="margin-top:6px;"></div>
   </div>
 </div>
@@ -451,14 +456,116 @@ const EXLIB=[
  {n:'Bodyweight Squat',g:['quads'],eq:[],t:'c'},
  {n:'Burpee',g:['chest','quads','core'],eq:[],t:'c'}
 ];
+EXLIB.push(
+ {n:'Pause Squat',g:['quads','glutes'],eq:['bb','rack'],t:'c'},
+ {n:'Sumo Deadlift',g:['glutes','hamstrings'],eq:['bb'],t:'c'},
+ {n:'Good Morning',g:['hamstrings','back'],eq:['bb'],t:'c'},
+ {n:'Pendlay Row',g:['back'],eq:['bb'],t:'c'},
+ {n:'Zercher Squat',g:['quads','core'],eq:['bb','rack'],t:'c'},
+ {n:'Barbell Lunge',g:['quads','glutes'],eq:['bb'],t:'c',ps:1},
+ {n:'Rack Pull',g:['back','glutes'],eq:['bb','rack'],t:'c'},
+ {n:'Barbell Floor Press',g:['chest','triceps'],eq:['bb'],t:'c'},
+ {n:'Snatch',g:['shoulders','hamstrings'],eq:['bb'],t:'c'},
+ {n:'Power Snatch',g:['shoulders','hamstrings'],eq:['bb'],t:'c'},
+ {n:'Clean & Jerk',g:['quads','shoulders'],eq:['bb'],t:'c'},
+ {n:'Hang Power Clean',g:['hamstrings','back'],eq:['bb'],t:'c'},
+ {n:'Push Jerk',g:['shoulders'],eq:['bb'],t:'c'},
+ {n:'Split Jerk',g:['shoulders'],eq:['bb'],t:'c'},
+ {n:'Seated Strict Press',g:['shoulders'],eq:['bb','bench'],t:'c'},
+ {n:'Upright Row',g:['shoulders','back'],eq:['bb'],t:'i'},
+ {n:'Reverse Curl',g:['biceps'],eq:['bb'],t:'i'},
+ {n:'JM Press',g:['triceps'],eq:['bb','bench'],t:'i'},
+ {n:'Barbell Calf Raise',g:['calves'],eq:['bb','rack'],t:'i'},
+ {n:'DB Fly',g:['chest'],eq:['db','bench'],t:'i'},
+ {n:'DB Floor Fly',g:['chest'],eq:['db'],t:'i'},
+ {n:'Arnold Press',g:['shoulders'],eq:['db'],t:'c'},
+ {n:'Seated DB Press',g:['shoulders'],eq:['db','bench'],t:'c'},
+ {n:'Renegade Row',g:['back','core'],eq:['db'],t:'c'},
+ {n:'DB Deadlift',g:['hamstrings','glutes'],eq:['db'],t:'c'},
+ {n:'DB Front Squat',g:['quads'],eq:['db'],t:'c'},
+ {n:'DB Thruster',g:['quads','shoulders'],eq:['db'],t:'c'},
+ {n:'DB Push Press',g:['shoulders'],eq:['db'],t:'c'},
+ {n:'DB Snatch',g:['shoulders','hamstrings'],eq:['db'],t:'c',ps:1},
+ {n:'DB Clean',g:['hamstrings'],eq:['db'],t:'c'},
+ {n:'DB Row',g:['back'],eq:['db'],t:'c'},
+ {n:'Zottman Curl',g:['biceps'],eq:['db'],t:'i'},
+ {n:'Concentration Curl',g:['biceps'],eq:['db'],t:'i',ps:1},
+ {n:'Cross-Body Hammer Curl',g:['biceps'],eq:['db'],t:'i'},
+ {n:'DB Skull Crusher',g:['triceps'],eq:['db','bench'],t:'i'},
+ {n:'DB Upright Row',g:['shoulders'],eq:['db'],t:'i'},
+ {n:'DB Shrug',g:['back'],eq:['db'],t:'i'},
+ {n:'Walking Lunge',g:['quads','glutes'],eq:['db'],t:'c',ps:1},
+ {n:'Forward Lunge',g:['quads','glutes'],eq:['db'],t:'c',ps:1},
+ {n:'Lateral Lunge',g:['quads','glutes'],eq:['db'],t:'c',ps:1},
+ {n:'Single-Leg RDL',g:['hamstrings','glutes'],eq:['db'],t:'c',ps:1},
+ {n:'Single-Leg Calf Raise',g:['calves'],eq:['db'],t:'i',ps:1},
+ {n:'Seated Calf Raise',g:['calves'],eq:['db','bench'],t:'i'},
+ {n:'Suitcase Carry',g:['core'],eq:['db'],t:'i'},
+ {n:'DB Side Bend',g:['core'],eq:['db'],t:'i'},
+ {n:'KB Deadlift',g:['hamstrings','glutes'],eq:['kb'],t:'c'},
+ {n:'KB Front Rack Squat',g:['quads'],eq:['kb'],t:'c'},
+ {n:'KB Clean',g:['hamstrings'],eq:['kb'],t:'c',ps:1},
+ {n:'KB Clean & Press',g:['shoulders'],eq:['kb'],t:'c',ps:1},
+ {n:'KB Snatch',g:['shoulders','hamstrings'],eq:['kb'],t:'c',ps:1},
+ {n:'Turkish Get-Up',g:['core','shoulders'],eq:['kb'],t:'c',ps:1},
+ {n:'KB Windmill',g:['core'],eq:['kb'],t:'i',ps:1},
+ {n:'KB Halo',g:['shoulders','core'],eq:['kb'],t:'i'},
+ {n:'KB High Pull',g:['shoulders'],eq:['kb'],t:'c'},
+ {n:'KB Push Press',g:['shoulders'],eq:['kb'],t:'c',ps:1},
+ {n:'KB Shrug',g:['back'],eq:['kb'],t:'i'},
+ {n:'KB Single-Leg RDL',g:['hamstrings'],eq:['kb'],t:'c',ps:1},
+ {n:'KB Suitcase Carry',g:['core'],eq:['kb'],t:'i'},
+ {n:'Goblet Lunge',g:['quads','glutes'],eq:['kb'],t:'c',ps:1},
+ {n:'Jump Squat',g:['quads'],eq:[],t:'c'},
+ {n:'Pistol Squat',g:['quads'],eq:[],t:'c',ps:1},
+ {n:'Split Squat',g:['quads','glutes'],eq:[],t:'c',ps:1},
+ {n:'Wall Sit',g:['quads'],eq:[],t:'i'},
+ {n:'Glute Kickback',g:['glutes'],eq:[],t:'i',ps:1},
+ {n:'Bird Dog',g:['core'],eq:[],t:'i'},
+ {n:'Dead Bug',g:['core'],eq:[],t:'i'},
+ {n:'Hollow Hold',g:['core'],eq:[],t:'i'},
+ {n:'Superman Hold',g:['back','core'],eq:[],t:'i'},
+ {n:'Russian Twist',g:['core'],eq:[],t:'i'},
+ {n:'V-Up',g:['core'],eq:[],t:'i'},
+ {n:'Side Plank',g:['core'],eq:[],t:'i',ps:1},
+ {n:'Mountain Climber',g:['core'],eq:[],t:'i'},
+ {n:'Crunch',g:['core'],eq:[],t:'i'},
+ {n:'Reverse Crunch',g:['core'],eq:[],t:'i'},
+ {n:'Flutter Kicks',g:['core'],eq:[],t:'i'},
+ {n:'Diamond Push-Up',g:['triceps','chest'],eq:[],t:'c'},
+ {n:'Wide Push-Up',g:['chest'],eq:[],t:'c'},
+ {n:'Pike Push-Up',g:['shoulders'],eq:[],t:'c'},
+ {n:'Handstand Push-Up',g:['shoulders'],eq:[],t:'c'},
+ {n:'Archer Push-Up',g:['chest'],eq:[],t:'c'},
+ {n:'Wall Walk',g:['shoulders','core'],eq:[],t:'c'},
+ {n:'Bodyweight Glute Bridge',g:['glutes'],eq:[],t:'i'},
+ {n:'Decline Push-Up',g:['chest','shoulders'],eq:['bench'],t:'c'},
+ {n:'Bench Dip',g:['triceps'],eq:['bench'],t:'c'},
+ {n:'Inverted Row',g:['back'],eq:['bb','rack'],t:'c'},
+ {n:'Scapular Pull-Up',g:['back'],eq:['pullup'],t:'i'},
+ {n:'Negative Pull-Up',g:['back'],eq:['pullup'],t:'c'},
+ {n:'Commando Pull-Up',g:['back','biceps'],eq:['pullup'],t:'c'},
+ {n:'Toes-to-Bar',g:['core'],eq:['pullup'],t:'i'},
+ {n:'Knees-to-Elbows',g:['core'],eq:['pullup'],t:'i'},
+ {n:'L-Sit Hold',g:['core'],eq:['pullup'],t:'i'},
+ {n:'Band Pull-Apart',g:['shoulders','back'],eq:['band'],t:'i'},
+ {n:'Band Face Pull',g:['shoulders','back'],eq:['band'],t:'i'},
+ {n:'Band Lateral Walk',g:['glutes'],eq:['band'],t:'i'},
+ {n:'Band Glute Kickback',g:['glutes'],eq:['band'],t:'i',ps:1},
+ {n:'Band Row',g:['back'],eq:['band'],t:'c'},
+ {n:'Band Overhead Press',g:['shoulders'],eq:['band'],t:'c'},
+ {n:'Band Curl',g:['biceps'],eq:['band'],t:'i'},
+ {n:'Band Pushdown',g:['triceps'],eq:['band'],t:'i'},
+ {n:'Band Good Morning',g:['hamstrings'],eq:['band'],t:'i'}
+);
 const LIB={}; EXLIB.forEach(e=>LIB[e.n]=e);
 const PARAMS={
  strength:{sets:4,repC:'4–6',repI:'8–10',restC:180,restI:120},
  muscle:{sets:4,repC:'6–10',repI:'10–12',restC:150,restI:90},
  tone:{sets:3,repC:'10–12',repI:'12–15',restC:90,restI:60}
 };
-const EQUIP_DEF={rack:true,bb:true,bench:true,pullup:true,db:true,kb:true,dbkg:22.5,plateskg:100};
-const EQ_LABEL={rack:'Squat rack',bb:'Olympic barbell + plates',bench:'Flat bench',pullup:'Pull-up bar',db:'Dumbbells',kb:'Kettlebells'};
+const EQUIP_DEF={rack:true,bb:true,bench:true,pullup:true,db:true,kb:true,band:false,dbkg:22.5,plateskg:100};
+const EQ_LABEL={rack:'Squat rack',bb:'Olympic barbell + plates',bench:'Flat bench',pullup:'Pull-up bar',db:'Dumbbells',kb:'Kettlebells',band:'Resistance bands'};
 
 const KEY='garageGymTracker_v2', OLDKEY='garageGymTracker_v1';
 const PALETTE=['#e03a3a','#2bb3a3','#f0b429','#7c5cff','#3a6ea5','#e0743a'];
@@ -997,7 +1104,7 @@ function swapEx(i){
   P.items[i]={ex:a.n,sets:it.sets,tgt:it.tgt.replace('/side','')+(a.ps?'/side':''),rest:restFor(a.n)};
   renderPreview();
 }
-let pickCb=null;
+let pickCb=null, pickAll=false;
 function addExercisePicker(){
   pickCb=(name)=>{
     const q=quizOr(), p=PARAMS[q.goal], l=LIB[name];
@@ -1011,7 +1118,7 @@ function addExercisePicker(){
 }
 function renderPicker(){
   const s=(document.getElementById('pickSearch').value||'').toLowerCase();
-  const list=EXLIB.filter(e=>avail(e)&&e.n.toLowerCase().includes(s)).sort((a,b)=>a.n.localeCompare(b.n));
+  const list=EXLIB.filter(e=>(pickAll||avail(e))&&e.n.toLowerCase().includes(s)).sort((a,b)=>a.n.localeCompare(b.n));
   let html='', letter='';
   list.forEach(e=>{
     const L=e.n[0].toUpperCase();
