@@ -319,6 +319,16 @@
   </div>
 </div>
 
+<!-- first-run name overlay -->
+<div class="overlay" id="nameOverlay" style="display:none;">
+  <div class="box">
+    <div style="font-weight:800; font-size:1.15rem;">Welcome to Garage Gym 💪</div>
+    <div class="muted" style="font-size:.85rem; margin-top:6px;">What should we call you?</div>
+    <input id="firstName" placeholder="Your name" autocapitalize="words" style="margin-top:12px;">
+    <button style="margin-top:14px;" onclick="saveFirstUser()">Let's go ▶</button>
+  </div>
+</div>
+
 <!-- quiz overlay -->
 <div class="overlay" id="quizOverlay" style="display:none;">
   <div class="box">
@@ -488,7 +498,7 @@ const ALL_EX=[...new Set(EXLIB.map(e=>e.n).concat(['Bodyweight','Jerk','KB Snatc
 /* ================= local state ================= */
 let db=load();
 function normUsers(users){
-  return (users&&users.length?users:['Rodney','Tarah']).map((u,i)=>{
+  return (users||[]).map((u,i)=>{
     if(typeof u==='string') u={name:u==='Partner'?'Tarah':u};
     return {idx:(u.idx===undefined?i:u.idx), name:u.name, color:u.color||PALETTE[i%PALETTE.length]};
   });
@@ -499,9 +509,9 @@ function load(){
   if(!d||!d.entries){
     try{ const o=JSON.parse(localStorage.getItem(OLDKEY)); if(o&&o.entries) d=o; }catch(e){}
   }
-  if(!d||!d.entries) d={users:null,current:0,entries:[]};
+  if(!d||!d.entries) d={users:[],current:0,entries:[]};
   d.users=normUsers(d.users);
-  if(!d.users.some(u=>u.idx===d.current)) d.current=d.users[0].idx;
+  if(d.users.length&&!d.users.some(u=>u.idx===d.current)) d.current=d.users[0].idx;
   d.outbox=d.outbox||[];
   d.hh=d.hh||null;
   d.meta=d.meta||{};
@@ -512,7 +522,7 @@ const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const today=()=>new Date().toISOString().slice(0,10);
 const e1rm=(w,r)=>r>0? w*(1+r/30):w;
 const fmt=n=>(Math.round(n*10)/10).toString();
-const cu=()=>db.users.find(u=>u.idx===db.current)||db.users[0];
+const cu=()=>db.users.find(u=>u.idx===db.current)||db.users[0]||{idx:0,name:'You',color:PALETTE[0]};
 const mine=()=>db.entries.filter(e=>e.user===db.current);
 const score=e=>e.ex==='Bodyweight'? -1 : (BW_MOVES.has(e.ex)&&!e.wt? (e.reps||0) : e1rm(e.wt||0,e.reps||0));
 const volOf=e=>e.ex==='Bodyweight'?0:(e.wt||0)*(e.reps||0)*(e.sets||1);
@@ -601,9 +611,19 @@ async function joinHousehold(){
   if(!code){ toast('Enter the code'); return; }
   db.hh=code; persist();
   const hadLocal=db.entries.length>0;
+  const myName=db.users.length===1&&!hadLocal? db.users[0].name : null;
   document.getElementById('hhOverlay').style.display='none';
   if(hadLocal) pushAllLocal();
   await pullCloud(true);
+  if(myName&&!db.users.some(u=>u.name.toLowerCase()===myName.toLowerCase())){
+    const idx=db.users.reduce((a,u)=>Math.max(a,u.idx),-1)+1;
+    const u={idx,name:myName,color:PALETTE[idx%PALETTE.length]};
+    db.users.push(u); db.current=idx; persist();
+    queueOp('POST','profiles',[profRow(u)]);
+  } else if(myName){
+    db.current=db.users.find(u=>u.name.toLowerCase()===myName.toLowerCase()).idx; persist();
+  }
+  setAccent();
   toast('Joined '+code+' ✓');
   renderAll();
 }
@@ -899,9 +919,9 @@ function estTime(items){
   let s=300;
   items.forEach(it=>{
     const l=LIB[it.ex]||{t:'i'};
-    s+=it.sets*((l.ps?70:40)+(it.rest||restFor(it.ex)));
+    s+=it.sets*(l.ps?70:40)+Math.max(0,it.sets-1)*(it.rest||restFor(it.ex));
   });
-  return Math.round(s/60/5)*5;
+  return Math.max(5,Math.round(s/60/5)*5);
 }
 function generateWorkout(){
   if(!selGroups.length){ toast('Pick at least one muscle group'); return; }
@@ -916,7 +936,7 @@ function generateWorkout(){
   const push=(e,type)=>{
     const sets=type==='c'?setsC:setsI;
     const rest=type==='c'?p.restC:p.restI;
-    const c=sets*((e.ps?70:40)+rest);
+    const c=sets*(e.ps?70:40)+(sets-1)*rest;
     if(cost+c>budget) return false;
     items.push({ex:e.n,sets,tgt:(type==='c'?p.repC:p.repI)+(e.ps?'/side':''),rest});
     used.add(e.n); cost+=c; return true;
@@ -1337,11 +1357,22 @@ function renderAll(){
 }
 document.getElementById('exList').innerHTML=ALL_EX.map(x=>`<option value="${x}">`).join('');
 document.getElementById('fDate').value=today();
+function saveFirstUser(){
+  const n=(document.getElementById('firstName').value||'').trim();
+  if(!n){ toast('Enter your name'); return; }
+  const u={idx:0,name:n,color:PALETTE[0]};
+  db.users=[u]; db.current=0; persist();
+  if(db.hh) queueOp('POST','profiles',[profRow(u)]);
+  document.getElementById('nameOverlay').style.display='none';
+  setAccent(); renderAll();
+  if(!db.hh) document.getElementById('hhOverlay').style.display='flex';
+}
 setAccent();
 renderTimerSeg();
 renderAll();
-if(!db.hh) document.getElementById('hhOverlay').style.display='flex';
-else { setSync(db.outbox.length?'pending':'off'); flushOutbox(); pullCloud(true); }
+if(!db.users.length) document.getElementById('nameOverlay').style.display='flex';
+else if(!db.hh) document.getElementById('hhOverlay').style.display='flex';
+if(db.hh){ setSync(db.outbox.length?'pending':'off'); flushOutbox(); pullCloud(true); }
 document.addEventListener('visibilitychange',()=>{ if(!document.hidden&&db.hh){ flushOutbox(); pullCloud(true); } });
 setInterval(()=>{ if(db.hh&&!document.hidden){ flushOutbox(); } },30000);
 </script>
