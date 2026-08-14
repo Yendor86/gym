@@ -167,6 +167,7 @@
     <div class="cta" id="heroCta"></div>
   </div>
   <div class="card" id="homeSuggest" style="display:none; cursor:pointer;"></div>
+  <div class="card" id="leagueTeaser" style="cursor:pointer;" onclick="showPanel('league')">🏆 <b>House League</b> — how does your gym stack up? <span class="muted" style="font-size:.78rem;">tap for the ladder</span></div>
   <div class="stats" id="statGrid"></div>
   <div class="card bigstat" id="tonnage"></div>
   <h2>Strength snapshot <span class="sub" id="snapLabel"></span></h2>
@@ -304,10 +305,23 @@
   </div>
 </div>
 
+<!-- LEAGUE -->
+<div class="panel" id="panel-league">
+  <h2 style="margin-top:4px;">🏆 House League <span class="sub">weekly resets · history kept</span></h2>
+  <div class="seg" id="lgSeg" style="margin-bottom:10px;">
+    <div class="on" data-p="wk">This Week</div><div data-p="mo">This Month</div><div data-p="yr">This Year</div>
+  </div>
+  <div id="leagueBody"><div class="empty">Loading the ladder…</div></div>
+  <button class="ghost" onclick="loadLeague()">Refresh ladder</button>
+  <button class="ghost" style="margin-top:8px;" onclick="showPanel('home')">Back</button>
+</div>
+
 <!-- MORE -->
 <div class="panel" id="panel-more">
   <h2 style="margin-top:4px;">Cloud sync</h2>
   <div class="card" id="hhCard"></div>
+  <h2>House League</h2>
+  <div class="card" id="leagueCard"></div>
   <h2>Who's lifting</h2>
   <div class="card" id="userList"></div>
   <h2>My training profile</h2>
@@ -578,7 +592,15 @@ EXLIB.push(
  {n:'Band Overhead Press',g:['shoulders'],eq:['band'],t:'c'},
  {n:'Band Curl',g:['biceps'],eq:['band'],t:'i'},
  {n:'Band Pushdown',g:['triceps'],eq:['band'],t:'i'},
- {n:'Band Good Morning',g:['hamstrings'],eq:['band'],t:'i'}
+ {n:'Band Good Morning',g:['hamstrings'],eq:['band'],t:'i'},
+ {n:'Incline Bench Press',g:['chest','shoulders'],eq:['bb','incline','rack'],t:'c'},
+ {n:'Incline DB Press',g:['chest','shoulders'],eq:['db','incline'],t:'c'},
+ {n:'Incline DB Fly',g:['chest'],eq:['db','incline'],t:'i'},
+ {n:'Incline DB Curl',g:['biceps'],eq:['db','incline'],t:'i'},
+ {n:'Dip',g:['chest','triceps'],eq:['dip'],t:'c'},
+ {n:'Weighted Dip',g:['chest','triceps'],eq:['dip'],t:'c'},
+ {n:'Box Jump',g:['quads'],eq:['box'],t:'c'},
+ {n:'Box Step-Up',g:['quads','glutes'],eq:['box'],t:'c',ps:1}
 );
 const LIB={}; EXLIB.forEach(e=>LIB[e.n]=e);
 const PARAMS={
@@ -586,8 +608,8 @@ const PARAMS={
  muscle:{sets:4,repC:'6–10',repI:'10–12',restC:150,restI:90},
  tone:{sets:3,repC:'10–12',repI:'12–15',restC:90,restI:60}
 };
-const EQUIP_DEF={rack:true,bb:true,bench:true,pullup:true,db:true,kb:true,band:false,dbkg:22.5,plateskg:100};
-const EQ_LABEL={rack:'Squat rack',bb:'Olympic barbell + plates',bench:'Flat bench',pullup:'Pull-up bar',db:'Dumbbells',kb:'Kettlebells',band:'Resistance bands'};
+const EQUIP_DEF={rack:true,bb:true,bench:true,incline:false,pullup:true,dip:false,box:false,db:true,kb:true,band:false,plateskg:100,dbw:'22.5',dbpair:true,kbw:'',kbpair:false};
+const EQ_LABEL={rack:'Squat rack',bb:'Olympic barbell + plates',bench:'Flat bench',incline:'Adjustable / incline bench',pullup:'Pull-up bar',dip:'Dip bars / station',box:'Plyo box',db:'Dumbbells',kb:'Kettlebells',band:'Resistance bands'};
 
 const KEY='garageGymTracker_v2', OLDKEY='garageGymTracker_v1';
 const PALETTE=['#e03a3a','#2bb3a3','#f0b429','#7c5cff','#3a6ea5','#e0743a'];
@@ -620,7 +642,7 @@ const TEMPLATES=[
    {ex:'Chin-Up',sets:3,tgt:'submax'},{ex:'Hammer Curl',sets:3,tgt:'10–12'},{ex:'Single-Arm KB Press',sets:3,tgt:'8–10'},{ex:'Dead Hang',sets:3,tgt:'max s'},{ex:'Plank',sets:3,tgt:'45–60 s'}]}
 ];
 const CYCLE=['A','B','C','D'];
-const BW_MOVES=new Set(EXLIB.filter(e=>e.eq.length===0||e.eq[0]==='pullup').map(e=>e.n));
+const BW_MOVES=new Set(EXLIB.filter(e=>e.eq.length===0||e.eq.includes('pullup')||e.eq.includes('dip')).map(e=>e.n));
 BW_MOVES.delete('Weighted Push-Up'); BW_MOVES.add('Weighted Push-Up');
 const ALL_EX=[...new Set(EXLIB.map(e=>e.n).concat(['Bodyweight','Jerk','KB Snatch','Goblet Lunge']))].sort();
 
@@ -655,7 +677,11 @@ const cu=()=>db.users.find(u=>u.idx===db.current)||db.users[0]||{idx:0,name:'You
 const mine=()=>db.entries.filter(e=>e.user===db.current);
 const score=e=>e.ex==='Bodyweight'? -1 : (BW_MOVES.has(e.ex)&&!e.wt? (e.reps||0) : e1rm(e.wt||0,e.reps||0));
 const volOf=e=>e.ex==='Bodyweight'?0:(e.wt||0)*(e.reps||0)*(e.sets||1);
-const getEquip=()=>Object.assign({},EQUIP_DEF,db.meta.equipment||{});
+const getEquip=()=>{
+  const q=Object.assign({},EQUIP_DEF,db.meta.equipment||{});
+  if(!q.dbw&&q.dbkg) q.dbw=String(q.dbkg);
+  return q;
+};
 const avail=e=>{ const q=getEquip(); return e.eq.every(t=>q[t]); };
 const myQuiz=()=>((db.meta.quiz||{})[db.current])||null;
 const quizOr=()=>myQuiz()||{goal:'muscle',level:'some',dur:45};
@@ -1356,21 +1382,144 @@ function renderQuizSummary(){
 /* ================= equipment ================= */
 function renderEquip(){
   const q=getEquip();
+  const boolRow=k=>
+    `<div class="eqrow">
+      <input type="checkbox" ${q[k]?'checked':''} onchange="updEquip('${k}',this.checked)">
+      <span>${EQ_LABEL[k]}</span>
+      ${k==='bb'?`<input class="kg" type="number" value="${q.plateskg}" step="5" onchange="updEquip('plateskg',parseFloat(this.value)||0)" title="total kg of plates">`:''}
+    </div>`;
+  const wRow=(k,wKey,pKey,ph)=>
+    `<div class="eqrow" style="flex-wrap:wrap;">
+      <input type="checkbox" ${q[k]?'checked':''} onchange="updEquip('${k}',this.checked)">
+      <span>${EQ_LABEL[k]}</span>
+      <div class="seg" style="margin:0; padding:2px; margin-left:auto; flex:0 0 auto;">
+        <div class="${!q[pKey]?'on':''}" style="padding:5px 12px;" onclick="updEquip('${pKey}',false)">Single</div>
+        <div class="${q[pKey]?'on':''}" style="padding:5px 12px;" onclick="updEquip('${pKey}',true)">Pair</div>
+      </div>
+      ${q[k]?`<input type="text" value="${q[wKey]||''}" placeholder="${ph}" style="width:100%; margin-top:6px; padding:9px;" onchange="updEquip('${wKey}',this.value)">`:''}
+    </div>`;
   document.getElementById('equipCard').innerHTML=
-    Object.keys(EQ_LABEL).map(k=>
-      `<div class="eqrow">
-        <input type="checkbox" ${q[k]?'checked':''} onchange="updEquip('${k}',this.checked)">
-        <span>${EQ_LABEL[k]}</span>
-        ${k==='db'?`<input class="kg" type="number" value="${q.dbkg}" step="0.5" onchange="updEquip('dbkg',parseFloat(this.value)||0)" title="kg each">`:''}
-        ${k==='bb'?`<input class="kg" type="number" value="${q.plateskg}" step="5" onchange="updEquip('plateskg',parseFloat(this.value)||0)" title="kg of plates">`:''}
-      </div>`).join('')
-    +'<div class="muted" style="font-size:.7rem; margin-top:8px;">Numbers: dumbbell kg each · total plate kg. Generated workouts only use ticked gear — synced for the whole household.</div>';
+    ['rack','bb','bench','incline','pullup','dip','box'].map(boolRow).join('')
+    +wRow('db','dbw','dbpair','dumbbell weights kg — e.g. 10, 15, 22.5')
+    +wRow('kb','kbw','kbpair','kettlebell weights kg — e.g. 8, 12, 16, 24')
+    +boolRow('band')
+    +'<div class="muted" style="font-size:.7rem; margin-top:8px;">The builder and A–Z library only offer exercises your ticked gear can do. Weights and single/pair are listed so everyone knows what\'s on the rack — synced for the whole household.</div>';
 }
 function updEquip(k,v){
   const q=getEquip(); q[k]=v;
   setMeta('equipment',q);
   toast('Equipment updated ✓');
 }
+
+/* ================= house league ================= */
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function renderLeagueCard(){
+  const el=document.getElementById('leagueCard');
+  const h=db.meta.house;
+  if(!db.hh){
+    el.innerHTML='<div class="muted" style="font-size:.83rem;">Set up cloud sync first — the league is played between households.</div>';
+    return;
+  }
+  if(h&&h.public){
+    el.innerHTML=`<div class="muted" style="font-size:.83rem;">Competing as</div>
+      <div style="font-weight:800; font-size:1.1rem; margin:4px 0 10px;">${esc(h.name)}</div>
+      <div class="row">
+        <button class="ghost mini" onclick="renameHouse()">Rename</button>
+        <button class="ghost mini" onclick="leaveLeague()">Leave league</button>
+      </div>`;
+  }else{
+    el.innerHTML=`<div class="muted" style="font-size:.83rem; line-height:1.5;">Name your house and enter the league — weekly totals (sessions, tonnage, biggest lift) become visible to other competing houses. No individual logs are shared.</div>
+      <input id="houseName" placeholder="e.g. The Bakers' Barbell Club" style="margin-top:10px;" value="${h?esc(h.name):''}">
+      <button style="margin-top:10px;" onclick="joinLeague()">Enter the League 🏆</button>`;
+  }
+}
+function joinLeague(){
+  const n=(document.getElementById('houseName').value||'').trim();
+  if(!n){ toast('Give your house a name'); return; }
+  setMeta('house',{name:n,public:true});
+  toast('Welcome to the league, '+n+' 🏆');
+  renderAll();
+}
+function renameHouse(){
+  const n=prompt('House name:',db.meta.house.name);
+  if(n&&n.trim()){ setMeta('house',{...db.meta.house,name:n.trim()}); renderAll(); }
+}
+function leaveLeague(){
+  if(!confirm('Leave the league? Your house disappears from the ladder.')) return;
+  setMeta('house',{...db.meta.house,public:false});
+  renderAll();
+}
+let lgPeriod='wk';
+async function loadLeague(){
+  const el=document.getElementById('leagueBody');
+  el.innerHTML='<div class="empty">Loading the ladder…</div>';
+  const joinHtml=(!db.meta.house||!db.meta.house.public)?
+    '<div class="card" style="border-color:var(--gold);">Your house isn\'t on the ladder yet — enter via <b>More → House League</b>.</div>':'';
+  try{
+    const houses=(await sbGet('household_meta?key=eq.house&select=household,value')).filter(x=>x.value&&x.value.public&&x.value.name);
+    if(!houses.length){
+      el.innerHTML='<div class="card"><div class="empty">No houses competing yet. Be the first!</div></div>'+joinHtml;
+      return;
+    }
+    const codes=houses.map(x=>x.household);
+    const inList='&household=in.('+codes.map(encodeURIComponent).join(',')+')';
+    const P={wk:['league_weekly',weekStart(today()),'This week (Mon–Sun)'],
+             mo:['league_monthly',today().slice(0,7)+'-01','This month'],
+             yr:['league_yearly',today().slice(0,4)+'-01-01','This year']}[lgPeriod];
+    const rows=await sbGet(P[0]+'?period=eq.'+P[1]+inList);
+    const list=houses.map(h=>{
+      const r=rows.find(x=>x.household===h.household)||{};
+      const lifters=Math.max(1,+r.lifters||1);
+      const t=+r.tonnage||0;
+      return {name:h.value.name,code:h.household,t,sess:+r.sessions||0,lifters,big:+r.biglift||0,tpl:t/lifters};
+    });
+    let champ='';
+    if(lgPeriod==='wk'){
+      try{
+        const lw=await sbGet('league_weekly?period=eq.'+addDays(weekStart(today()),-7)+inList+'&order=tonnage.desc&limit=1');
+        if(lw.length&&+lw[0].tonnage>0){
+          const hn=houses.find(h=>h.household===lw[0].household);
+          if(hn) champ='<div class="card" style="border-color:var(--gold);">👑 <b>Reigning champs:</b> '+esc(hn.value.name)+(lw[0].household===db.hh?' (us!)':'')+' — '+kgShort(+lw[0].tonnage)+' last week</div>';
+        }
+      }catch(e){}
+    }
+    const medal=(key,icon,title,fmtFn)=>{
+      const w=list.slice().sort((a,b)=>(b[key]||0)-(a[key]||0))[0];
+      if(!w||!(w[key]>0)) return '';
+      return `<div class="feeditem"><span class="medal">${icon}</span>
+        <div><b>${title}</b><div class="muted" style="font-size:.74rem;">${esc(w.name)}${w.code===db.hh?' — that\'s us!':''}</div></div>
+        <div style="margin-left:auto;font-weight:800;color:var(--gold);">${fmtFn(w)}</div></div>`;
+    };
+    const medals=
+      medal('t','🏋️','Heaviest House',h=>kgShort(h.t))+
+      medal('sess','🔥','Most Sessions',h=>h.sess+' session'+(h.sess>1?'s':''))+
+      medal('tpl','💪','Pound-for-Pound',h=>kgShort(h.tpl)+' / lifter')+
+      medal('big','⚡','Biggest Lift',h=>kgShort(h.big)+' e1RM');
+    const rowsHtml=list.slice().sort((a,b)=>b.t-a.t).map((h,i)=>{
+      const me=h.code===db.hh;
+      return `<tr${me?' style="color:var(--gold);"':''}>
+        <td style="width:30px; font-weight:800;">${i===0&&h.t>0?'🥇':i===1&&h.t>0?'🥈':i===2&&h.t>0?'🥉':(i+1)}</td>
+        <td><b>${esc(h.name)}</b>${me?' <span class="pbtag">US</span>':''}<div class="muted" style="font-size:.7rem;">${h.lifters} lifter${h.lifters>1?'s':''}</div></td>
+        <td class="num">${h.sess}</td>
+        <td class="num">${h.t>0?kgShort(h.t):'—'}</td>
+      </tr>`;
+    }).join('');
+    el.innerHTML=champ+
+      (medals?'<div class="card">'+medals+'</div>':'')+
+      `<div class="card"><table>
+        <thead><tr><th></th><th>House</th><th style="text-align:right;">Sess</th><th style="text-align:right;">Tonnage</th></tr></thead>
+        <tbody>${rowsHtml}</tbody></table>
+      <div class="muted" style="font-size:.7rem; margin-top:10px;">${P[2]}. Sessions = lifter-days. Every set is kept forever — flick between week, month and year. Talk is cheap, tonnage isn't.</div></div>`+joinHtml;
+  }catch(e){
+    el.innerHTML='<div class="empty">Couldn\'t reach the league — check your connection and hit refresh.</div>';
+  }
+}
+document.querySelectorAll('#lgSeg div').forEach(d=>{
+  d.onclick=()=>{
+    document.querySelectorAll('#lgSeg div').forEach(x=>x.classList.remove('on'));
+    d.classList.add('on'); lgPeriod=d.dataset.p; loadLeague();
+  };
+});
 
 /* ================= quick log ================= */
 function quickSave(){
@@ -1544,7 +1693,8 @@ function renderAll(){
   if(activePanel==='preview') renderPreview();
   if(activePanel==='log') renderHistory();
   if(activePanel==='progress'){ renderChartSelect(); drawExChart(); drawWeeklyVol('volChart'); drawBwChart(); renderPBs(); }
-  if(activePanel==='more'){ renderUserList(); renderHhCard(); renderQuizSummary(); renderEquip(); }
+  if(activePanel==='more'){ renderUserList(); renderHhCard(); renderQuizSummary(); renderEquip(); renderLeagueCard(); }
+  if(activePanel==='league') loadLeague();
   if(activePanel==='workout'&&W) renderWorkout();
 }
 document.getElementById('exList').innerHTML=ALL_EX.map(x=>`<option value="${x}">`).join('');
