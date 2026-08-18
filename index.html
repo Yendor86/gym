@@ -210,7 +210,10 @@
     <label>Muscle groups</label>
     <div class="chips" id="groupChips"></div>
     <div class="chips" id="suggChip"></div>
+    <label>How's the body today?</label>
+    <div class="chips" id="vibeChips"></div>
     <button onclick="generateWorkout()" style="margin-top:8px;">Generate Workout ⚡</button>
+    <button class="ghost" style="margin-top:8px;" onclick="buildMyWeek()">🗓 Build my whole week</button>
     <button class="ghost" style="margin-top:8px;" onclick="openPreview({name:'Custom Workout',items:[],src:'build'});addExercisePicker()">📝 Build from scratch — full A–Z</button>
     <button class="ghost" style="margin-top:8px;" onclick="showPanel('train')">Back</button>
   </div>
@@ -230,6 +233,7 @@
       <button class="ghost" onclick="showPanel('train')">Back</button>
     </div>
   </div>
+  <div id="pFlag"></div>
   <div class="card" id="pList"></div>
 </div>
 
@@ -395,7 +399,26 @@
       <option value="30">~30 minutes</option>
       <option value="45" selected>~45 minutes</option>
       <option value="60">~60 minutes</option>
+      <option value="75">~75 minutes</option>
     </select>
+    <label>Days per week I can train</label>
+    <select id="qDays">
+      <option value="2">2 days</option>
+      <option value="3" selected>3 days</option>
+      <option value="4">4 days</option>
+      <option value="5">5 days</option>
+      <option value="6">6 days</option>
+    </select>
+    <label>Pull-ups</label>
+    <select id="qPull">
+      <option value="yes">I can do them</option>
+      <option value="band">Only assisted / negatives</option>
+      <option value="no">Not yet — leave them out</option>
+    </select>
+    <label>Anything to go easy on?</label>
+    <div class="chips" id="qAvoid"></div>
+    <label>Extra focus (optional)</label>
+    <div class="chips" id="qFocus"></div>
     <button style="margin-top:16px;" onclick="saveQuiz()">Save ✓</button>
   </div>
 </div>
@@ -403,7 +426,7 @@
 <!-- exercise picker overlay -->
 <div class="overlay" id="pickOverlay" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
   <div class="box">
-    <div style="font-weight:800;">Exercise library <span class="muted" style="font-weight:400; font-size:.75rem;">A–Z · filtered to your equipment</span></div>
+    <div style="font-weight:800;" id="pickTitle">Exercise library <span class="muted" style="font-weight:400; font-size:.75rem;">A–Z · filtered to your equipment</span></div>
     <input id="pickSearch" placeholder="Search…" style="margin-top:10px;" oninput="renderPicker()">
     <div class="eqrow" style="border:none; padding:8px 0 0;">
       <input type="checkbox" id="pickAllBox" onchange="pickAll=this.checked;renderPicker()">
@@ -706,7 +729,24 @@ const getEquip=()=>{
 };
 const avail=e=>{ const q=getEquip(); return e.eq.every(t=>q[t]); };
 const myQuiz=()=>((db.meta.quiz||{})[db.current])||null;
-const quizOr=()=>myQuiz()||{goal:'muscle',level:'some',dur:45};
+const quizOr=()=>Object.assign({goal:'muscle',level:'some',dur:45,days:3,pull:'yes',avoid:[],focus:[]},myQuiz()||{});
+const AVOID_OPTS={knees:'Knees',back:'Lower back',shoulders:'Shoulders',wrists:'Wrists'};
+const AVOID_HIT={
+  knees:['Squat','Lunge','Step-Up','Box Jump','Jump Squat','Pistol','Split Squat','Wall Sit','Thruster','Burpee'],
+  back:['Deadlift','Good Morning','Rack Pull','Zercher','Clean','Snatch','Barbell Row','Pendlay','Romanian','Superman','Bent'],
+  shoulders:['Overhead','Strict Press','Push Press','Jerk','Snatch','Handstand','Upright Row','Dip','Muscle-Up','Behind'],
+  wrists:['Front Squat','Clean','Snatch','Push-Up','Handstand','Zercher','Renegade']
+};
+const PULL_MOVES=['Pull-Up','Chin-Up','Muscle-Up','Toes-to-Bar','Knees-to-Elbows','Commando'];
+function blocked(name,q){
+  q=q||quizOr();
+  if(q.pull!=='yes'&&PULL_MOVES.some(p=>name.includes(p))){
+    if(q.pull==='no') return true;
+    if(!/Negative|Scapular|Dead Hang/i.test(name)) return true;   // assisted: negatives & holds only
+  }
+  return (q.avoid||[]).some(a=>(AVOID_HIT[a]||[]).some(s=>name.includes(s)));
+}
+const pickable=e=>avail(e)&&!blocked(e.n);
 const restFor=ex=>{ const p=PARAMS[quizOr().goal], l=LIB[ex]; return l? (l.t==='c'?p.restC:p.restI) : 90; };
 
 /* ================= cloud sync ================= */
@@ -1150,9 +1190,13 @@ function openBuilder(pre){
   showPanel('build');
   document.querySelectorAll('nav .ni').forEach(x=>x.classList.remove('active'));
 }
+let vibe='ok';
+const VIBES={fresh:'💪 Fresh — bring it',ok:'👍 Normal',sore:'😮‍💨 Sore / tired',quick:'⏱ Short on time'};
 function renderBuilder(){
   const q=quizOr();
-  document.getElementById('quizTag').textContent={muscle:'building muscle',strength:'getting strong',tone:'toning up'}[q.goal]+' · ~'+q.dur+' min';
+  document.getElementById('quizTag').textContent={muscle:'building muscle',strength:'getting strong',tone:'toning up'}[q.goal]+' · ~'+q.dur+' min · '+q.days+ ' days/wk';
+  document.getElementById('vibeChips').innerHTML=Object.keys(VIBES).map(k=>
+    `<div class="chip ${vibe===k?'on':''}" onclick="vibe='${k}';renderBuilder()">${VIBES[k]}</div>`).join('');
   document.getElementById('quickChips').innerHTML=Object.keys(QUICKS).map(k=>
     `<div class="chip" onclick='selGroups=${JSON.stringify(QUICKS)}["${k}"].slice();renderBuilder()'>${k}</div>`).join('');
   document.getElementById('groupChips').innerHTML=GROUPS.map(g=>
@@ -1173,36 +1217,71 @@ function estTime(items){
   });
   return Math.max(5,Math.round(s/60/5)*5);
 }
-function generateWorkout(){
-  if(!selGroups.length){ toast('Pick at least one muscle group'); return; }
+function buildItems(groups,opts){
+  opts=opts||{};
   const q=quizOr(), p=PARAMS[q.goal];
-  const setsC=q.level==='new'?Math.max(2,p.sets-1):p.sets;
+  let setsC=q.level==='new'?Math.max(2,p.sets-1):p.sets;
+  let mins=opts.dur||q.dur;
+  const v=opts.vibe||'ok';
+  if(v==='fresh') setsC+=1;
+  if(v==='sore'){ setsC=Math.max(2,setsC-1); }
+  if(v==='quick') mins=Math.min(mins,30);
   const setsI=Math.max(2,setsC-1);
-  const budget=q.dur*60-300;
-  const items=[], used=new Set();
+  const budget=mins*60-300;
+  const items=[], used=new Set(opts.used||[]);
+  const focus=q.focus||[];
   let cost=0;
-  const cand=(g,type)=>EXLIB.filter(e=>avail(e)&&!used.has(e.n)&&e.t===type&&e.g.includes(g))
+  const cand=(g,type)=>EXLIB.filter(e=>pickable(e)&&!used.has(e.n)&&e.t===type&&e.g.includes(g))
     .sort((a,b)=>(a.g.indexOf(g)-b.g.indexOf(g))||(Math.random()-0.5));
   const push=(e,type)=>{
-    const sets=type==='c'?setsC:setsI;
-    const rest=type==='c'?p.restC:p.restI;
+    let sets=type==='c'?setsC:setsI;
+    if(focus.some(f=>e.g.includes(f))) sets+=1;
+    const rest=(type==='c'?p.restC:p.restI)*(v==='sore'?0.9:1);
     const c=sets*(e.ps?70:40)+(sets-1)*rest;
     if(cost+c>budget) return false;
-    items.push({ex:e.n,sets,tgt:(type==='c'?p.repC:p.repI)+(e.ps?'/side':''),rest});
+    items.push({ex:e.n,sets,tgt:(type==='c'?p.repC:p.repI)+(e.ps?'/side':''),rest:Math.round(rest)});
     used.add(e.n); cost+=c; return true;
   };
-  for(const g of selGroups){ const c=cand(g,'c'); if(c.length) push(c[0],'c'); }
-  for(const g of selGroups){ const c=cand(g,'c'); if(c.length&&selGroups.length<3) push(c[0],'c'); }
+  for(const g of groups){ const c=cand(g,'c'); if(c.length) push(c[0],'c'); }
+  for(const g of groups){ const c=cand(g,'c'); if(c.length&&groups.length<3) push(c[0],'c'); }
   let added=true;
   while(added){
     added=false;
-    for(const g of selGroups){
-      const c=cand(g,'i');
-      if(c.length&&push(c[0],'i')) added=true;
-    }
+    for(const g of groups){ const c=cand(g,'i'); if(c.length&&push(c[0],'i')) added=true; }
   }
-  if(!items.length){ toast('Nothing fits — check your equipment in More'); return; }
-  openPreview({name:selGroups.map(g=>GLABEL[g]).join(' & ')+' Builder', items, src:'build'});
+  return {items,used};
+}
+function generateWorkout(){
+  if(!selGroups.length){ toast('Pick at least one muscle group'); return; }
+  const {items}=buildItems(selGroups,{vibe});
+  if(!items.length){ toast('Nothing fits — check equipment & profile in More'); return; }
+  openPreview({name:selGroups.map(g=>GLABEL[g]).join(' & ')+' Session', items, src:'build'});
+}
+const SPLITS={
+  2:[['Squat & Push',['quads','glutes','chest','shoulders','triceps']],['Hinge & Pull',['hamstrings','glutes','back','biceps','core']]],
+  3:[['Push',['chest','shoulders','triceps']],['Pull',['back','biceps']],['Legs',['quads','hamstrings','glutes','calves']]],
+  4:[['Upper A',['chest','back','shoulders']],['Lower A',['quads','glutes','calves']],['Upper B',['back','shoulders','biceps','triceps']],['Lower B',['hamstrings','glutes','core']]],
+  5:[['Push',['chest','shoulders','triceps']],['Pull',['back','biceps']],['Legs',['quads','hamstrings','glutes','calves']],['Upper',['chest','back','shoulders']],['Arms & Core',['biceps','triceps','core']]],
+  6:[['Push A',['chest','shoulders','triceps']],['Pull A',['back','biceps']],['Legs A',['quads','glutes','calves']],['Push B',['chest','shoulders','triceps']],['Pull B',['back','biceps','core']],['Legs B',['hamstrings','glutes','core']]]
+};
+function buildMyWeek(){
+  if(!myQuiz()){ pendingAfterQuiz=buildMyWeek; openQuiz(); return; }
+  const q=quizOr(), split=SPLITS[q.days]||SPLITS[3];
+  if(!confirm('Build a '+q.days+'-day plan for '+cu().name+'?\n\n'+split.map((s,i)=>'Day '+(i+1)+' — '+s[0]).join('\n')+'\n\nThey\'ll be saved under "Your workouts" and you can edit any of them.')) return;
+  let used=new Set(), made=[];
+  const all=(db.meta.workouts||[]).filter(w=>!/^Plan · /.test(w.name));
+  split.forEach(([name,groups],i)=>{
+    let r=buildItems(groups,{used});
+    if(r.items.length<3){ used=new Set(); r=buildItems(groups,{}); }   // reset pool if we ran dry
+    r.used.forEach(x=>used.add(x));
+    if(r.items.length){
+      all.push({id:uid(),name:'Plan · Day '+(i+1)+' — '+name,items:r.items.map(it=>({ex:it.ex,sets:it.sets,tgt:it.tgt,rest:it.rest})),est:estTime(r.items)});
+      made.push(name);
+    }
+  });
+  setMeta('workouts',all);
+  toast('Your '+made.length+'-day plan is ready 🗓');
+  showPanel('train');
 }
 
 /* ================= preview / personalise ================= */
@@ -1227,28 +1306,45 @@ function renderPreview(){
   if(!P) return;
   document.getElementById('pEst').textContent='~'+estTime(P.items)+' min';
   document.getElementById('pCount').textContent=P.items.length;
+  const flagged=P.items.filter(it=>blocked(it.ex)).length;
+  document.getElementById('pFlag').innerHTML=flagged?
+    `<div class="card" style="border-color:var(--gold); margin:0 0 10px;">⚠️ ${flagged} exercise${flagged>1?'s':''} below ${flagged>1?'don\'t':'doesn\'t'} match your profile (pull-ups or a joint you're going easy on). Tap ⇄ to swap ${flagged>1?'them':'it'} for something friendlier.</div>`:'';
   document.getElementById('pList').innerHTML=P.items.map((it,i)=>{
-    const l=LIB[it.ex];
+    const l=LIB[it.ex], bad=blocked(it.ex);
+    const alt=altsFor(it.ex,P.items.map(x=>x.ex))[0];
     return `<div class="prow">
-      <div style="flex:1;"><div class="nm">${it.ex}${l?'<span class="grptag">'+GLABEL[l.g[0]]+'</span>':''}</div>
-        <div class="dt">${it.sets} × ${it.tgt} · rest ${Math.round((it.rest||90)/60*10)/10} min</div></div>
+      <div style="flex:1;"><div class="nm">${bad?'⚠️ ':''}${it.ex}${l?'<span class="grptag">'+GLABEL[l.g[0]]+'</span>':''}</div>
+        <div class="dt">${it.sets} × ${it.tgt} · rest ${Math.round((it.rest||90)/60*10)/10} min${alt?' · <span style="color:var(--u);">or '+esc(alt.n)+'</span>':''}</div></div>
       <button onclick="swapEx(${i})" title="swap">⇄</button>
       <button onclick="P.items.splice(${i},1);renderPreview()" title="remove">✕</button>
     </div>`;}).join('')||'<div class="empty">Empty — add exercises below.</div>';
 }
-function swapEx(i){
-  const it=P.items[i], l=LIB[it.ex];
-  if(!l){ toast('No alternatives found'); return; }
-  const g=l.g[0];
-  const used=new Set(P.items.map(x=>x.ex));
-  const alts=EXLIB.filter(e=>avail(e)&&e.g.includes(g)&&!used.has(e.n));
-  if(!alts.length){ toast('No alternatives available'); return; }
-  const a=alts[Math.floor(Math.random()*alts.length)];
-  P.items[i]={ex:a.n,sets:it.sets,tgt:it.tgt.replace('/side','')+(a.ps?'/side':''),rest:restFor(a.n)};
-  renderPreview();
+function altsFor(name,exclude){
+  const l=LIB[name]; if(!l) return [];
+  const skip=new Set(exclude||[]);
+  return EXLIB.filter(e=>pickable(e)&&e.n!==name&&!skip.has(e.n)&&e.g[0]===l.g[0]&&e.t===l.t)
+    .concat(EXLIB.filter(e=>pickable(e)&&e.n!==name&&!skip.has(e.n)&&e.g.includes(l.g[0])&&e.t!==l.t))
+    .filter((e,i,a)=>a.indexOf(e)===i);
 }
-let pickCb=null, pickAll=false;
+function swapEx(i){
+  const it=P.items[i];
+  const alts=altsFor(it.ex,P.items.map(x=>x.ex));
+  if(!alts.length){ toast('No alternatives with your gear'); return; }
+  pickList=alts;
+  pickCb=(name)=>{
+    const a=LIB[name];
+    P.items[i]={ex:name,sets:it.sets,tgt:it.tgt.replace('/side','')+((a&&a.ps)?'/side':''),rest:restFor(name)};
+    pickList=null; renderPreview();
+  };
+  document.getElementById('pickSearch').value='';
+  document.getElementById('pickTitle').textContent='Swap '+it.ex+' for…';
+  document.getElementById('pickOverlay').style.display='flex';
+  renderPicker();
+}
+let pickCb=null, pickAll=false, pickList=null;
 function addExercisePicker(){
+  pickList=null;
+  document.getElementById('pickTitle').innerHTML='Exercise library <span class="muted" style="font-weight:400; font-size:.75rem;">A–Z · filtered to your gear</span>';
   pickCb=(name)=>{
     const q=quizOr(), p=PARAMS[q.goal], l=LIB[name];
     const type=l?l.t:'i';
@@ -1261,7 +1357,8 @@ function addExercisePicker(){
 }
 function renderPicker(){
   const s=(document.getElementById('pickSearch').value||'').toLowerCase();
-  const list=EXLIB.filter(e=>(pickAll||avail(e))&&e.n.toLowerCase().includes(s)).sort((a,b)=>a.n.localeCompare(b.n));
+  const src=pickList||EXLIB;
+  const list=src.filter(e=>(pickAll||(avail(e)&&(pickList||!blocked(e.n))))&&e.n.toLowerCase().includes(s)).sort((a,b)=>a.n.localeCompare(b.n));
   let html='', letter='';
   list.forEach(e=>{
     const L=e.n[0].toUpperCase();
@@ -1478,15 +1575,29 @@ function resumeTimer(){
 
 /* ================= quiz ================= */
 let pendingAfterQuiz=null;
+let qAvoidSel=[], qFocusSel=[];
+function renderQuizChips(){
+  document.getElementById('qAvoid').innerHTML=Object.keys(AVOID_OPTS).map(k=>
+    `<div class="chip ${qAvoidSel.includes(k)?'on':''}" onclick="qAvoidSel=qAvoidSel.includes('${k}')?qAvoidSel.filter(x=>x!=='${k}'):[...qAvoidSel,'${k}'];renderQuizChips()">${AVOID_OPTS[k]}</div>`).join('')
+    +`<div class="chip ${!qAvoidSel.length?'on':''}" onclick="qAvoidSel=[];renderQuizChips()">All good</div>`;
+  document.getElementById('qFocus').innerHTML=GROUPS.map(g=>
+    `<div class="chip ${qFocusSel.includes(g)?'on':''}" onclick="qFocusSel=qFocusSel.includes('${g}')?qFocusSel.filter(x=>x!=='${g}'):[...qFocusSel,'${g}'];renderQuizChips()">${GLABEL[g]}</div>`).join('');
+}
 function openQuiz(){
-  const q=myQuiz();
-  if(q){ document.getElementById('qGoal').value=q.goal; document.getElementById('qLevel').value=q.level; document.getElementById('qDur').value=q.dur; }
+  const q=quizOr();
+  ['qGoal','qLevel','qDur','qDays','qPull'].forEach((id,i)=>{
+    document.getElementById(id).value=[q.goal,q.level,q.dur,q.days,q.pull][i];
+  });
+  qAvoidSel=[...(q.avoid||[])]; qFocusSel=[...(q.focus||[])];
+  renderQuizChips();
   document.getElementById('quizTitle').textContent='Tune workouts for '+cu().name;
   document.getElementById('quizOverlay').style.display='flex';
 }
 function saveQuiz(){
   const quiz=db.meta.quiz||{};
-  quiz[db.current]={goal:document.getElementById('qGoal').value, level:document.getElementById('qLevel').value, dur:parseInt(document.getElementById('qDur').value)};
+  quiz[db.current]={goal:document.getElementById('qGoal').value, level:document.getElementById('qLevel').value,
+    dur:parseInt(document.getElementById('qDur').value), days:parseInt(document.getElementById('qDays').value),
+    pull:document.getElementById('qPull').value, avoid:qAvoidSel, focus:qFocusSel};
   setMeta('quiz',quiz);
   document.getElementById('quizOverlay').style.display='none';
   toast('Profile saved ✓');
@@ -1495,9 +1606,11 @@ function saveQuiz(){
 }
 function renderQuizSummary(){
   const q=myQuiz();
-  document.getElementById('quizSummary').innerHTML=q?
-    `<b style="color:var(--text);">${cu().name}:</b> ${{muscle:'build muscle',strength:'get stronger',tone:'tone up'}[q.goal]} · ${{new:'new to lifting',some:'some experience',exp:'well trained'}[q.level]} · ~${q.dur} min sessions`
-    :'Not set for '+cu().name+' yet — takes 30 seconds and makes generated workouts personal.';
+  if(!q){ document.getElementById('quizSummary').innerHTML='Not set for '+cu().name+' yet — takes 30 seconds and makes every generated workout personal.'; return; }
+  const f=quizOr();
+  document.getElementById('quizSummary').innerHTML=
+    `<b style="color:var(--text);">${esc(cu().name)}:</b> ${{muscle:'build muscle',strength:'get stronger',tone:'tone up'}[f.goal]} · ${{new:'new to lifting',some:'some experience',exp:'well trained'}[f.level]} · ~${f.dur} min × ${f.days} days`
+    +`<div style="margin-top:4px;">Pull-ups: ${{yes:'yes',band:'assisted only',no:'not yet'}[f.pull]}${(f.avoid||[]).length?' · easy on: '+f.avoid.map(a=>AVOID_OPTS[a].toLowerCase()).join(', '):''}${(f.focus||[]).length?' · focus: '+f.focus.map(g=>GLABEL[g].toLowerCase()).join(', '):''}</div>`;
 }
 
 /* ================= equipment ================= */
