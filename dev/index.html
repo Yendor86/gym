@@ -122,6 +122,11 @@
   .chip.on{background:var(--u); border-color:var(--u); color:#fff;}
   .chip.sugg{border-color:var(--gold); color:var(--gold);}
   .wchip{padding:6px 11px; font-size:.78rem; border-radius:9px;}
+  .wchip.pair{background:var(--gold); border-color:var(--gold); color:#0e1012;}
+  .segwrap{flex-wrap:wrap;}
+  .segwrap div{flex:0 0 auto; min-width:52px;}
+  .setrow .rm{width:30px; flex:0 0 30px; text-align:center; color:var(--muted); background:none; border:none; font-size:.95rem; padding:0;}
+  .resume{background:linear-gradient(135deg,var(--u-soft),var(--card)); border:1px solid var(--u); border-radius:16px; padding:14px; margin-bottom:12px; display:flex; align-items:center; gap:12px; cursor:pointer;}
   /* preview rows */
   .prow{display:flex; align-items:center; gap:8px; padding:11px 2px; border-bottom:1px solid var(--line);}
   .prow:last-child{border:none;}
@@ -168,6 +173,7 @@
     <div class="cta" id="heroCta"></div>
   </div>
   <div class="card" id="homeSuggest" style="display:none; cursor:pointer;"></div>
+  <div class="resume" id="resumeCard" style="display:none;"></div>
   <div class="card" id="leagueTeaser" style="cursor:pointer;" onclick="showPanel('league')">🏆 <b>House League</b> — how does your gym stack up? <span class="muted" style="font-size:.78rem;">tap for the ladder</span></div>
   <div class="stats" id="statGrid"></div>
   <div class="card bigstat" id="tonnage"></div>
@@ -238,8 +244,8 @@
       <button class="mini ghost" style="margin-left:auto; width:auto;" onclick="addCustomExercise()">+ Exercise</button>
     </div>
     <label>Rest timer</label>
-    <div class="seg" id="timerSeg">
-      <div data-t="auto">Auto</div><div data-t="60">1:00</div><div data-t="90">1:30</div><div data-t="120">2:00</div><div data-t="180">3:00</div>
+    <div class="seg segwrap" id="timerSeg">
+      <div data-t="auto">Auto</div><div data-t="30">0:30</div><div data-t="60">1:00</div><div data-t="90">1:30</div><div data-t="120">2:00</div><div data-t="150">2:30</div><div data-t="180">3:00</div><div data-t="240">4:00</div><div data-t="300">5:00</div>
     </div>
     <div class="muted" style="font-size:.7rem; margin-top:6px;">Auto = recommended rest per exercise (2–3 min big lifts, ~90s accessories). Alarm beeps & vibrates.</div>
   </div>
@@ -684,11 +690,18 @@ const score=e=>e.ex==='Bodyweight'? -1 : (BW_MOVES.has(e.ex)&&!e.wt? (e.reps||0)
 const volOf=e=>e.ex==='Bodyweight'?0:(e.wt||0)*(e.reps||0)*(e.sets||1);
 const DB_WEIGHTS=[2.5,5,7.5,10,12.5,15,17.5,20,22.5,25,30,35,40];
 const KB_WEIGHTS=[4,6,8,10,12,16,20,24,28,32];
-const parseW=v=>Array.isArray(v)? v : (typeof v==='number'? [v] : String(v||'').split(/[,\s]+/).map(parseFloat).filter(x=>x>0));
+function parseW(v,defPair){
+  let arr;
+  if(Array.isArray(v)) arr=v;
+  else if(typeof v==='number') arr=[v];
+  else arr=String(v||'').split(/[,\s]+/).map(parseFloat).filter(x=>x>0);
+  return arr.map(x=>typeof x==='object'&&x!==null? {w:+x.w,p:!!x.p} : {w:+x,p:!!defPair})
+            .filter(x=>x.w>0).sort((a,b)=>a.w-b.w);
+}
 const getEquip=()=>{
   const q=Object.assign({},EQUIP_DEF,db.meta.equipment||{});
-  if((!q.dbw||!parseW(q.dbw).length)&&q.dbkg) q.dbw=[q.dbkg];
-  q.dbw=parseW(q.dbw); q.kbw=parseW(q.kbw);
+  if((!q.dbw||!q.dbw.length)&&q.dbkg) q.dbw=[q.dbkg];
+  q.dbw=parseW(q.dbw,q.dbpair!==false); q.kbw=parseW(q.kbw,q.kbpair);
   return q;
 };
 const avail=e=>{ const q=getEquip(); return e.eq.every(t=>q[t]); };
@@ -828,16 +841,25 @@ function confetti(){
     setTimeout(()=>s.remove(),3200);
   }
 }
+let actx=null;
 function beep(){
   try{
-    const ctx=new (window.AudioContext||window.webkitAudioContext)();
-    [0,0.25,0.5].forEach(d=>{
-      const o=ctx.createOscillator(),g=ctx.createGain();
-      o.connect(g); g.connect(ctx.destination);
-      o.frequency.value=880;
-      g.gain.setValueAtTime(0.25,ctx.currentTime+d);
-      g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+d+0.2);
-      o.start(ctx.currentTime+d); o.stop(ctx.currentTime+d+0.21);
+    actx=actx||new (window.AudioContext||window.webkitAudioContext)();
+    if(actx.state==='suspended') actx.resume();
+    const master=actx.createGain();
+    master.gain.value=1.0; master.connect(actx.destination);
+    // 6 rising blasts, ~2.6s total
+    [0,0.42,0.84,1.26,1.68,2.1].forEach((d,i)=>{
+      const o=actx.createOscillator(), g=actx.createGain(), o2=actx.createOscillator();
+      o.type='square'; o2.type='triangle';
+      o.frequency.value=i<4?880:1170; o2.frequency.value=(i<4?880:1170)*2;
+      o.connect(g); o2.connect(g); g.connect(master);
+      const t=actx.currentTime+d;
+      g.gain.setValueAtTime(0.0001,t);
+      g.gain.exponentialRampToValueAtTime(0.9,t+0.02);
+      g.gain.setValueAtTime(0.9,t+0.24);
+      g.gain.exponentialRampToValueAtTime(0.001,t+0.34);
+      o.start(t); o2.start(t); o.stop(t+0.35); o2.stop(t+0.35);
     });
   }catch(e){}
 }
@@ -956,6 +978,7 @@ function nextDayKey(){
   return tagged.length? CYCLE[(CYCLE.indexOf(tagged[tagged.length-1].day)+1)%4] : 'B';
 }
 function renderHome(){
+  renderResume();
   const u=cu();
   const h=new Date().getHours();
   document.getElementById('greet').textContent=(h<12?'Morning':h<17?'Arvo':'Evening')+', '+u.name;
@@ -1267,60 +1290,128 @@ function startFromPreview(){
 
 /* ================= workout mode ================= */
 let W=null;
+const WKEY='gymActiveWorkout';
+function saveW(){
+  try{
+    if(W) localStorage.setItem(WKEY,JSON.stringify({W,title:document.getElementById('wTitle').textContent,sub:document.getElementById('wSub').textContent,user:db.current,ts:Date.now()}));
+    else localStorage.removeItem(WKEY);
+  }catch(e){}
+}
+function restoreW(){
+  try{
+    const s=JSON.parse(localStorage.getItem(WKEY));
+    if(!s||!s.W) return false;
+    if(Date.now()-s.ts>36e5*18){ localStorage.removeItem(WKEY); return false; }
+    W=s.W;
+    if(s.user!==undefined&&db.users.some(u=>u.idx===s.user)){ db.current=s.user; setAccent(); }
+    document.getElementById('wTitle').textContent=s.title||'Workout';
+    document.getElementById('wSub').textContent=s.sub||'';
+    return true;
+  }catch(e){ return false; }
+}
+function renderResume(){
+  const el=document.getElementById('resumeCard');
+  if(W){
+    const done=W.items.reduce((a,it)=>a+it.sets.filter(s=>s.entryId).length,0);
+    el.style.display='flex';
+    el.innerHTML=`<div style="font-size:1.4rem;">⏳</div>
+      <div><div style="font-weight:800;">Workout in progress</div>
+      <div class="muted" style="font-size:.76rem;">${esc(document.getElementById('wTitle').textContent)} · ${done} set${done===1?'':'s'} logged</div></div>
+      <div style="margin-left:auto; background:var(--u); color:#fff; font-weight:800; font-size:.8rem; padding:9px 16px; border-radius:10px;">RESUME</div>`;
+    el.onclick=()=>{ showPanel('workout'); };
+  } else el.style.display='none';
+}
 function lastBest(ex){
   const es=mine().filter(e=>e.ex===ex&&e.ex!=='Bodyweight');
   if(!es.length) return null;
   const d=es.slice().sort((a,b)=>b.date.localeCompare(a.date))[0].date;
   return es.filter(e=>e.date===d).reduce((a,b)=>score(b)>score(a)?b:a);
 }
+function myBodyweight(){
+  const bws=mine().filter(e=>e.ex==='Bodyweight').sort((a,b)=>b.date.localeCompare(a.date));
+  return bws.length? bws[0].wt : 0;
+}
 function startWorkoutItems(title,tag,items){
+  if(W&&W.items.some(it=>it.sets.some(s=>s.entryId))&&!confirm('You have a workout in progress. Start this new one anyway? (logged sets stay saved)')) return;
+  const bw=myBodyweight();
   W={key:tag,items:items.map(it=>{
     const lb=lastBest(it.ex);
-    return {ex:it.ex,tgt:it.sets+' × '+it.tgt,rest:it.rest||restFor(it.ex),last:lb,
-      sets:Array.from({length:it.sets},()=>({wt:lb?lb.wt:'',reps:'',entryId:null}))};
+    const seed=lb? lb.wt : (BW_MOVES.has(it.ex)? bw : '');
+    return {ex:it.ex,tgt:it.sets+' × '+it.tgt,rest:it.rest||restFor(it.ex),last:lb,bw:BW_MOVES.has(it.ex),
+      sets:Array.from({length:it.sets},()=>({wt:seed||'',reps:'',entryId:null}))};
   })};
   document.getElementById('wTitle').textContent=title;
   document.getElementById('wSub').textContent=today()+' · '+cu().name;
+  saveW();
   renderTimerSeg();
   showPanel('workout');
   document.querySelectorAll('nav .ni').forEach(x=>x.classList.remove('active'));
 }
 function renderWorkout(){
+  if(!W) return;
   document.getElementById('wList').innerHTML=W.items.map((it,ii)=>
     `<div class="wex">
-      <div class="wex-h"><span class="n">${it.ex}</span><span class="tgt">${it.tgt}</span></div>
-      ${it.last?`<div class="lastinfo">Last: ${it.last.wt? fmt(it.last.wt)+'kg × '+it.last.reps : it.last.reps+' reps'} (${it.last.date})</div>`:''}
+      <div class="wex-h"><span class="n">${it.ex}</span><span class="tgt">${it.tgt}</span>
+        <button class="rm" style="width:auto; padding:0 4px; background:none; border:none; color:var(--muted);" onclick="removeExercise(${ii})" title="remove exercise">✕</button></div>
+      ${it.last?`<div class="lastinfo">Last: ${it.last.wt? fmt(it.last.wt)+'kg × '+it.last.reps : it.last.reps+' reps'} (${it.last.date})</div>`
+        :(it.bw?'<div class="lastinfo">Bodyweight move — your bodyweight is pre-filled, add any extra load on top.</div>':'')}
       ${it.sets.map((s,si)=>
         `<div class="setrow">
           <span class="sn">${si+1}</span>
-          <input type="number" inputmode="decimal" step="0.5" placeholder="kg" value="${s.wt}" onchange="W.items[${ii}].sets[${si}].wt=this.value">
-          <input type="number" inputmode="numeric" placeholder="reps" value="${s.reps}" onchange="W.items[${ii}].sets[${si}].reps=this.value">
+          <input type="number" inputmode="decimal" step="0.5" placeholder="${it.bw?'BW kg':'kg'}" value="${s.wt}" onchange="setField(${ii},${si},'wt',this.value)">
+          <input type="number" inputmode="numeric" placeholder="reps" value="${s.reps}" onchange="setField(${ii},${si},'reps',this.value)">
           <div class="done ${s.entryId?'on':''}" onclick="tickSet(${ii},${si})">${s.entryId?'✓':'○'}</div>
+          <button class="rm" onclick="removeSet(${ii},${si})" title="remove set">✕</button>
         </div>`).join('')}
-      <button class="addset" onclick="W.items[${ii}].sets.push({wt:'',reps:'',entryId:null});renderWorkout()">+ add set</button>
+      <button class="addset" onclick="addSet(${ii})">+ add set</button>
     </div>`).join('');
+  renderResume();
+}
+function setField(ii,si,f,v){ W.items[ii].sets[si][f]=v; saveW(); }
+function addSet(ii){
+  const it=W.items[ii], last=it.sets[it.sets.length-1];
+  it.sets.push({wt:last?last.wt:'',reps:'',entryId:null});
+  saveW(); renderWorkout();
+}
+function removeSet(ii,si){
+  const s=W.items[ii].sets[si];
+  if(s.entryId&&!confirm('That set is logged. Remove it and delete the entry?')) return;
+  if(s.entryId) removeEntry(s.entryId);
+  W.items[ii].sets.splice(si,1);
+  if(!W.items[ii].sets.length) W.items[ii].sets.push({wt:'',reps:'',entryId:null});
+  saveW(); renderWorkout();
+}
+function removeExercise(ii){
+  const it=W.items[ii];
+  const logged=it.sets.filter(s=>s.entryId).length;
+  if(!confirm('Remove '+it.ex+' from this workout?'+(logged?' Its '+logged+' logged set(s) will be deleted.':''))) return;
+  it.sets.forEach(s=>{ if(s.entryId) removeEntry(s.entryId); });
+  W.items.splice(ii,1);
+  saveW(); renderWorkout();
 }
 function tickSet(ii,si){
   const it=W.items[ii], s=it.sets[si];
   if(s.entryId){
     removeEntry(s.entryId); s.entryId=null;
-    renderWorkout(); return;
+    stopTimer();
+    saveW(); renderWorkout(); return;
   }
   const wt=parseFloat(s.wt)||0, reps=parseInt(s.reps)||0;
   if(!wt&&!reps){ toast('Enter weight or reps'); return; }
   const pb=isNewPB(it.ex,wt,reps);
   const id=uid();
   addEntry({id,user:db.current,ex:it.ex,wt,reps,sets:1,date:today(),notes:'',day:W.key});
-  s.entryId=id; renderWorkout();
+  s.entryId=id; saveW(); renderWorkout();
+  startTimer(timerSecs(it));           // always restart the clock on a completed set
   if(pb){ toast('🏆 NEW PB — '+it.ex+'!',true); confetti(); }
-  else startTimer(timerSecs(it));
 }
 function addCustomExercise(){
   if(!W) return;
   pickCb=(name)=>{
-    const lb=lastBest(name);
-    W.items.push({ex:name,tgt:'',rest:restFor(name),last:lb,sets:Array.from({length:3},()=>({wt:lb?lb.wt:'',reps:'',entryId:null}))});
-    renderWorkout();
+    const lb=lastBest(name), bw=BW_MOVES.has(name)?myBodyweight():0;
+    const seed=lb? lb.wt : (bw||'');
+    W.items.push({ex:name,tgt:'',rest:restFor(name),last:lb,bw:BW_MOVES.has(name),sets:Array.from({length:3},()=>({wt:seed||'',reps:'',entryId:null}))});
+    saveW(); renderWorkout();
   };
   document.getElementById('pickSearch').value='';
   document.getElementById('pickOverlay').style.display='flex';
@@ -1330,13 +1421,13 @@ function finishWorkout(){
   const done=W.items.reduce((a,it)=>a+it.sets.filter(s=>s.entryId).length,0);
   if(!done){ toast('No sets ticked yet'); return; }
   const vol=mine().filter(e=>e.date===today()).reduce((a,e)=>a+volOf(e),0);
-  stopTimer(); W=null;
+  stopTimer(); W=null; saveW();
   toast('Session saved — '+done+' sets · '+fmt(vol)+'kg moved 💪');
   showPanel('home');
 }
 function cancelWorkout(){
-  if(!confirm('Leave this workout? Ticked sets stay saved.')) return;
-  stopTimer(); W=null; showPanel('home');
+  if(!confirm('Discard this workout? Ticked sets stay saved in your log.')) return;
+  stopTimer(); W=null; saveW(); showPanel('home');
 }
 
 /* rest timer */
@@ -1350,19 +1441,40 @@ function renderTimerSeg(){
 function timerSecs(item){
   return timerPref==='auto'? (item.rest||90) : parseInt(timerPref);
 }
-let tInt=null,tLeft=0;
+let tInt=null,tEnd=0;
+const TKEY='gymTimerEnd';
 function startTimer(sec){
-  tLeft=sec||90;
+  tEnd=Date.now()+(sec||90)*1000;
+  try{ localStorage.setItem(TKEY,String(tEnd)); }catch(e){}
+  runTimer();
+}
+function runTimer(){
   const chip=document.getElementById('timerChip');
-  chip.classList.add('show'); chip.textContent='⏱ '+fmtT(tLeft);
   clearInterval(tInt);
-  tInt=setInterval(()=>{
-    tLeft--; chip.textContent='⏱ '+fmtT(tLeft);
-    if(tLeft<=0){ stopTimer(); toast('Rest done — go! 🔔'); beep(); if(navigator.vibrate)navigator.vibrate([200,100,200]); }
-  },1000);
+  const tick=()=>{
+    const left=Math.round((tEnd-Date.now())/1000);
+    if(left<=0){
+      stopTimer(); toast('Rest done — GO! 🔔'); beep();
+      if(navigator.vibrate)navigator.vibrate([400,120,400,120,400]);
+      return;
+    }
+    chip.classList.add('show'); chip.textContent='⏱ '+fmtT(left);
+  };
+  tick(); tInt=setInterval(tick,250);
 }
 const fmtT=s=>Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
-function stopTimer(){ clearInterval(tInt); document.getElementById('timerChip').classList.remove('show'); }
+function stopTimer(){
+  clearInterval(tInt); tEnd=0;
+  try{ localStorage.removeItem(TKEY); }catch(e){}
+  document.getElementById('timerChip').classList.remove('show');
+}
+function resumeTimer(){
+  try{
+    const e=parseInt(localStorage.getItem(TKEY)||'0');
+    if(e&&e>Date.now()){ tEnd=e; runTimer(); }
+    else if(e) localStorage.removeItem(TKEY);
+  }catch(err){}
+}
 
 /* ================= quiz ================= */
 let pendingAfterQuiz=null;
@@ -1397,29 +1509,31 @@ function renderEquip(){
       <span>${EQ_LABEL[k]}</span>
       ${k==='bb'?`<input class="kg" type="number" value="${q.plateskg}" step="5" onchange="updEquip('plateskg',parseFloat(this.value)||0)" title="total kg of plates">`:''}
     </div>`;
-  const wRow=(k,wKey,pKey,std)=>{
+  const wRow=(k,wKey,std)=>{
     const own=q[wKey];
-    const all=[...new Set([...std,...own])].sort((a,b)=>a-b);
+    const byW={}; own.forEach(o=>byW[o.w]=o);
+    const all=[...new Set([...std,...own.map(o=>o.w)])].sort((a,b)=>a-b);
+    const summary=own.length? own.map(o=>o.w+(o.p?' ×2':'')).join(', ')+' kg'
+      : 'Tap a weight: once = single, twice = pair';
     return `<div class="eqrow" style="flex-wrap:wrap;">
       <input type="checkbox" ${q[k]?'checked':''} onchange="updEquip('${k}',this.checked)">
       <span>${EQ_LABEL[k]}</span>
-      <div class="seg" style="margin:0; padding:2px; margin-left:auto; flex:0 0 auto;">
-        <div class="${!q[pKey]?'on':''}" style="padding:5px 12px;" onclick="updEquip('${pKey}',false)">Single</div>
-        <div class="${q[pKey]?'on':''}" style="padding:5px 12px;" onclick="updEquip('${pKey}',true)">Pair</div>
-      </div>
       ${q[k]?`<div class="chips" style="width:100%; margin:8px 0 0;">
-        ${all.map(w=>`<div class="chip wchip ${own.includes(w)?'on':''}" onclick="toggleW('${wKey}',${w})">${w}</div>`).join('')}
+        ${all.map(w=>{
+          const o=byW[w];
+          return `<div class="chip wchip ${o?(o.p?'pair':'on'):''}" onclick="cycleW('${wKey}',${w})">${w}${o&&o.p?' ×2':''}</div>`;
+        }).join('')}
         <div class="chip wchip" onclick="addCustomW('${wKey}')">+ other</div>
       </div>
-      <div class="muted" style="font-size:.68rem; margin-top:4px;">${own.length?'You own: '+own.join(', ')+' kg':'Tap the weights you own'}</div>`:''}
+      <div class="muted" style="font-size:.68rem; margin-top:4px;">${summary}</div>`:''}
     </div>`;
   };
   document.getElementById('equipCard').innerHTML=
     ['rack','bb','bench','incline','pullup','dip','box'].map(boolRow).join('')
-    +wRow('db','dbw','dbpair',DB_WEIGHTS)
-    +wRow('kb','kbw','kbpair',KB_WEIGHTS)
+    +wRow('db','dbw',DB_WEIGHTS)
+    +wRow('kb','kbw',KB_WEIGHTS)
     +boolRow('band')
-    +'<div class="muted" style="font-size:.7rem; margin-top:8px;">The builder and A–Z library only offer exercises your ticked gear can do. Weights and single/pair are listed so everyone knows what\'s on the rack — synced for the whole household.</div>';
+    +'<div class="muted" style="font-size:.7rem; margin-top:8px;">Tap a weight once for a <b>single</b>, again for a <b>pair (×2, gold)</b>, again to remove — so you can own a pair of 12s and one 24. Synced for the whole household.</div>';
 }
 function updEquip(k,v){
   const q=getEquip(); q[k]=v;
@@ -1427,18 +1541,20 @@ function updEquip(k,v){
   renderEquip();
   toast('Equipment updated ✓');
 }
-function toggleW(key,w){
+function cycleW(key,w){
   const q=getEquip();
   const arr=q[key];
-  const i=arr.indexOf(w);
-  if(i>=0) arr.splice(i,1); else arr.push(w);
-  arr.sort((a,b)=>a-b);
+  const i=arr.findIndex(o=>o.w===w);
+  if(i<0) arr.push({w,p:false});            // none -> single
+  else if(!arr[i].p) arr[i].p=true;          // single -> pair
+  else arr.splice(i,1);                      // pair -> none
+  arr.sort((a,b)=>a.w-b.w);
   setMeta('equipment',q);
   renderEquip();
 }
 function addCustomW(key){
   const v=parseFloat(prompt('Weight in kg:'));
-  if(v>0) toggleW(key,Math.round(v*10)/10);
+  if(v>0) cycleW(key,Math.round(v*10)/10);
 }
 
 /* ================= house league ================= */
@@ -1534,8 +1650,10 @@ async function loadLeague(){
         <td class="num">${h.t>0?kgShort(h.t):'—'}</td>
       </tr>`;
     }).join('');
+    const anyData=list.some(h=>h.t>0||h.sess>0);
     el.innerHTML=champ+
-      (medals?'<div class="card">'+medals+'</div>':'')+
+      (medals?'<div class="card">'+medals+'</div>':
+        '<div class="card" style="border-color:var(--gold);">🥊 Nothing logged '+(lgPeriod==='wk'?'this week':lgPeriod==='mo'?'this month':'this year')+' yet — first house to lift takes the lead.</div>')+
       `<div class="card"><table>
         <thead><tr><th></th><th>House</th><th style="text-align:right;">Sess</th><th style="text-align:right;">Tonnage</th></tr></thead>
         <tbody>${rowsHtml}</tbody></table>
@@ -1741,7 +1859,12 @@ function saveFirstUser(){
 }
 setAccent();
 renderTimerSeg();
+const hadWorkout=restoreW();
 renderAll();
+resumeTimer();
+if(hadWorkout){ renderWorkout(); toast('Workout restored — pick up where you left off'); }
+window.addEventListener('beforeunload',saveW);
+document.addEventListener('visibilitychange',()=>{ if(document.hidden) saveW(); else resumeTimer(); });
 if(!db.users.length) document.getElementById('nameOverlay').style.display='flex';
 else if(!db.hh) document.getElementById('hhOverlay').style.display='flex';
 if(db.hh){ setSync(db.outbox.length?'pending':'off'); flushOutbox(); pullCloud(true); }
