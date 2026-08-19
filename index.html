@@ -127,6 +127,20 @@
   .segwrap div{flex:0 0 auto; min-width:52px;}
   .setrow .rm{width:30px; flex:0 0 30px; text-align:center; color:var(--muted); background:none; border:none; font-size:.95rem; padding:0;}
   .resume{background:linear-gradient(135deg,var(--u-soft),var(--card)); border:1px solid var(--u); border-radius:16px; padding:14px; margin-bottom:12px; display:flex; align-items:center; gap:12px; cursor:pointer;}
+  .sesh{background:var(--card); border:1px solid var(--line); border-radius:16px; margin-bottom:10px; overflow:hidden;}
+  .sesh-h{display:flex; align-items:center; gap:10px; padding:13px 14px; cursor:pointer;}
+  .sesh-h .dte{font-weight:800; font-size:.95rem;}
+  .sesh-h .meta{color:var(--muted); font-size:.74rem; margin-top:2px;}
+  .sesh-h .ton{margin-left:auto; text-align:right; font-weight:800; color:var(--gold); font-size:.92rem;}
+  .sesh-h .ton small{display:block; color:var(--muted); font-weight:400; font-size:.66rem;}
+  .sesh-b{border-top:1px solid var(--line); padding:4px 14px 12px; display:none;}
+  .sesh.open .sesh-b{display:block;}
+  .sesh.open .sesh-h{background:var(--card2);}
+  .exline{padding:9px 0; border-bottom:1px solid var(--line); font-size:.86rem;}
+  .exline:last-of-type{border:none;}
+  .exline .en{font-weight:700;}
+  .exline .es{color:var(--muted); font-size:.78rem; margin-top:2px;}
+  .daytag{display:inline-block; font-size:.6rem; font-weight:800; background:var(--card3); color:var(--muted); border-radius:4px; padding:1px 6px; margin-left:6px; vertical-align:2px;}
   /* preview rows */
   .prow{display:flex; align-items:center; gap:8px; padding:11px 2px; border-bottom:1px solid var(--line);}
   .prow:last-child{border:none;}
@@ -281,8 +295,12 @@
     </div>
     <div class="muted" style="font-size:.74rem; margin-top:8px;" id="bwHint"></div>
   </div>
-  <h2>History</h2>
-  <div class="card" id="historyList"></div>
+  <h2>History <span class="sub" id="histSub"></span></h2>
+  <div class="seg" id="histSeg">
+    <div class="on" data-h="sessions">Sessions</div><div data-h="sets">All sets</div>
+  </div>
+  <div id="sessionList" style="margin-top:10px;"></div>
+  <div class="card" id="historyList" style="display:none;"></div>
 </div>
 
 <!-- PROGRESS -->
@@ -704,7 +722,10 @@ function load(){
 }
 function persist(){ localStorage.setItem(KEY,JSON.stringify(db)); }
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
-const today=()=>new Date().toISOString().slice(0,10);
+const pad2=n=>String(n).padStart(2,'0');
+const ymd=d=>d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());
+const parseYMD=s=>{ const p=String(s).split('-').map(Number); return new Date(p[0],p[1]-1,p[2]); };
+const today=()=>ymd(new Date());
 const e1rm=(w,r)=>r>0? w*(1+r/30):w;
 const fmt=n=>(Math.round(n*10)/10).toString();
 const cu=()=>db.users.find(u=>u.idx===db.current)||db.users[0]||{idx:0,name:'You',color:PALETTE[0]};
@@ -1012,7 +1033,7 @@ function staleGroups(excl){
 }
 
 /* ================= home ================= */
-function weekStart(d){ const x=new Date(d+'T00:00'); const day=(x.getDay()+6)%7; x.setDate(x.getDate()-day); return x.toISOString().slice(0,10); }
+function weekStart(d){ const x=parseYMD(d); x.setDate(x.getDate()-((x.getDay()+6)%7)); return ymd(x); }
 function nextDayKey(){
   const tagged=mine().filter(e=>e.day&&CYCLE.includes(e.day)).sort((a,b)=>a.date.localeCompare(b.date));
   return tagged.length? CYCLE[(CYCLE.indexOf(tagged[tagged.length-1].day)+1)%4] : 'B';
@@ -1044,11 +1065,11 @@ function renderHome(){
   const sessDates=[...new Set(lifts.map(e=>e.date))];
   const wkSess=sessDates.filter(d=>weekStart(d)===thisWeek).length;
   const weeks=new Set(sessDates.map(weekStart));
-  let streak=0, w=new Date(thisWeek+'T00:00');
-  while(weeks.has(w.toISOString().slice(0,10))){ streak++; w.setDate(w.getDate()-7); }
+  let streak=0, w=parseYMD(thisWeek);
+  while(weeks.has(ymd(w))){ streak++; w.setDate(w.getDate()-7); }
   const pbs=pbIds();
   const cutoff=new Date(); cutoff.setDate(cutoff.getDate()-30);
-  const pbs30=m.filter(e=>pbs.has(e.id)&&e.ex!=='Bodyweight'&&new Date(e.date)>=cutoff).length;
+  const pbs30=m.filter(e=>pbs.has(e.id)&&e.ex!=='Bodyweight'&&parseYMD(e.date)>=cutoff).length;
   const bws=m.filter(e=>e.ex==='Bodyweight').sort((a,b)=>a.date.localeCompare(b.date));
   const bwNow=bws.length? fmt(bws[bws.length-1].wt):'—';
   document.getElementById('statGrid').innerHTML=
@@ -1080,7 +1101,7 @@ function dayVols(){
   mine().forEach(e=>{ const x=volOf(e); if(e.ex!=='Bodyweight'){ v[e.date]=(v[e.date]||0)+x; } });
   return v;
 }
-function addDays(d,n){ const x=new Date(d+'T00:00'); x.setDate(x.getDate()+n); return x.toISOString().slice(0,10); }
+function addDays(d,n){ const x=parseYMD(d); x.setDate(x.getDate()+n); return ymd(x); }
 const kgShort=v=>v>=1000?((Math.round(v/100)/10)+'t'):Math.round(v)+'';
 function renderWeekStrip(){
   const vols=dayVols(), ws=weekStart(today()), t=today();
@@ -1131,7 +1152,7 @@ function renderHeatmap(){
         const a=v<=q1?0.3:v<=q2?0.55:v<=q3?0.8:1;
         bg=`rgba(${rgb},${a})`;
       }
-      const label=new Date(d+'T00:00').toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'});
+      const label=parseYMD(d).toLocaleDateString('en-AU',{weekday:'short',day:'numeric',month:'short'});
       html+=`<div class="hmcell" style="background:${bg};${d>t?'opacity:.25;':''}" onclick="toast('${label} — ${v>0?kgShort(v)+' lifted':'rest day'}')"></div>`;
     }
   }
@@ -1805,7 +1826,70 @@ function saveBW(){
   document.getElementById('fBw').value='';
   toast('Bodyweight logged ✓'); renderAll();
 }
+let histMode='sessions', openSesh={};
+const DAYNAME=k=>{ const t=TEMPLATES.find(x=>x.key===k); return t? t.name : (k==='CUSTOM'?'Custom':k); };
+function renderSessions(){
+  const wrap=document.getElementById('sessionList');
+  const m=mine().filter(e=>e.ex!=='Bodyweight');
+  const bw=mine().filter(e=>e.ex==='Bodyweight');
+  const byDate={};
+  m.forEach(e=>{ (byDate[e.date]=byDate[e.date]||[]).push(e); });
+  const dates=Object.keys(byDate).sort().reverse();
+  document.getElementById('histSub').textContent=dates.length+' session'+(dates.length===1?'':'s')+' logged';
+  if(!dates.length){ wrap.innerHTML='<div class="card"><div class="empty">No sessions yet — your first workout will show up here.</div></div>'; return; }
+  const pbs=pbIds();
+  wrap.innerHTML=dates.map(d=>{
+    const es=byDate[d];
+    const ton=es.reduce((a,e)=>a+volOf(e),0);
+    const tags=[...new Set(es.map(e=>e.day).filter(Boolean))];
+    const byEx={};
+    es.forEach(e=>{ (byEx[e.ex]=byEx[e.ex]||[]).push(e); });
+    const exNames=Object.keys(byEx);
+    const pbCount=es.filter(e=>pbs.has(e.id)).length;
+    const dayBw=bw.filter(b=>b.date===d)[0];
+    const open=!!openSesh[d];
+    return `<div class="sesh ${open?'open':''}">
+      <div class="sesh-h" onclick="openSesh['${d}']=!openSesh['${d}'];renderSessions()">
+        <div>
+          <div class="dte">${parseYMD(d).toLocaleDateString('en-AU',{weekday:'long',day:'numeric',month:'short'})}${tags.length?'<span class="daytag">'+esc(tags.map(DAYNAME).join(' + '))+'</span>':''}</div>
+          <div class="meta">${exNames.length} exercise${exNames.length===1?'':'s'} · ${es.length} sets${pbCount?' · 🏆 '+pbCount+' PB'+(pbCount===1?'':'s'):''}${dayBw?' · '+fmt(dayBw.wt)+'kg BW':''}</div>
+        </div>
+        <div class="ton">${kgShort(ton)}<small>lifted</small></div>
+      </div>
+      <div class="sesh-b">
+        ${exNames.map(ex=>{
+          const sets=byEx[ex];
+          const detail=sets.map(s=>(s.wt?fmt(s.wt)+'×'+s.reps:s.reps+' reps')+(pbs.has(s.id)?' 🏆':'')).join(' · ');
+          const best=sets.reduce((a,b)=>score(b)>score(a)?b:a);
+          return `<div class="exline">
+            <div class="en">${esc(ex)} <span class="muted" style="font-weight:400;">× ${sets.length}</span></div>
+            <div class="es">${detail}${best.wt?' · best e1RM '+fmt(e1rm(best.wt,best.reps))+'kg':''}</div>
+          </div>`;
+        }).join('')}
+        <button class="ghost mini" style="margin-top:10px;" onclick="event.stopPropagation();repeatSession('${d}')">🔁 Do this workout again</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+function repeatSession(d){
+  const es=mine().filter(e=>e.date===d&&e.ex!=='Bodyweight');
+  const byEx={};
+  es.forEach(e=>{ (byEx[e.ex]=byEx[e.ex]||[]).push(e); });
+  const items=Object.keys(byEx).map(ex=>{
+    const s=byEx[ex];
+    const reps=s.map(x=>x.reps).sort((a,b)=>a-b);
+    return {ex,sets:s.length,tgt:reps[0]===reps[reps.length-1]?String(reps[0]):reps[0]+'–'+reps[reps.length-1],rest:restFor(ex)};
+  });
+  openPreview({name:parseYMD(d).toLocaleDateString('en-AU',{day:'numeric',month:'short'})+' repeat', items, src:'build'});
+}
 function renderHistory(){
+  document.querySelectorAll('#histSeg div').forEach(x=>{
+    x.classList.toggle('on',x.dataset.h===histMode);
+    x.onclick=()=>{ histMode=x.dataset.h; renderHistory(); };
+  });
+  document.getElementById('sessionList').style.display=histMode==='sessions'?'block':'none';
+  document.getElementById('historyList').style.display=histMode==='sets'?'block':'none';
+  if(histMode==='sessions') renderSessions();
   const list=document.getElementById('historyList');
   const m=mine().slice().sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
   const pbs=pbIds();
