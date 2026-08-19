@@ -3,9 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<meta name="theme-color" content="#0e1012">
-<link rel="icon" type="image/png" href="icon.png">
-<link rel="apple-touch-icon" href="icon.png">
+<meta name="theme-color" content="#17263d">
+<link rel="icon" type="image/png" sizes="192x192" href="../favicon.png">
+<link rel="apple-touch-icon" href="../icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Garage Gym">
@@ -14,10 +14,10 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
   :root{
-    --bg:#0f0d14; --card:#17191d; --card2:#20242a; --card3:#2a2f36;
-    --text:#eceae5; --muted:#8d939b; --line:#2c3138;
+    --bg:#0b1524; --card:#13223a; --card2:#1b2f4d; --card3:#24406b;
+    --text:#eaf1fb; --muted:#8ea6c6; --line:#254063;
     --gold:#f0b429; --green:#3ecf6a;
-    --u:#e03a3a; --u-soft:rgba(224,58,58,.14);
+    --u:#ff5029; --u-soft:rgba(255,80,41,.16);
   }
   *{box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent;}
   body{background:var(--bg); color:var(--text); font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; max-width:760px; margin:0 auto; padding:12px 14px 96px;}
@@ -28,6 +28,10 @@
   .top{display:flex; align-items:center; gap:10px; padding:4px 0 10px;}
   .logo{font-weight:800; text-transform:uppercase; letter-spacing:.6px; font-size:1rem; display:flex; align-items:center;}
   .logo span{color:var(--u);}
+  .logoimg{height:30px; width:auto; display:block;}
+  .wm{font-weight:800; letter-spacing:.5px; font-size:.9rem; margin-left:8px; color:#ff5029;}
+  .wm b{color:#39b6d6; font-weight:800;}
+
   .sdot{width:8px; height:8px; border-radius:50%; margin-left:8px; background:#555;}
   .sdot.ok{background:var(--green);} .sdot.pending{background:var(--gold);} .sdot.off{background:#777;}
   .userswitch{margin-left:auto; display:flex; gap:6px; align-items:center;}
@@ -175,7 +179,7 @@
 <body>
 
 <div class="top">
-  <div class="logo">Garage <span>&nbsp;Gym</span><span style="background:#7c5cff;color:#fff;font-size:.55rem;padding:2px 6px;border-radius:5px;margin-left:8px;letter-spacing:.5px;">SANDBOX</span><span class="sdot" id="syncDot"></span></div>
+  <div class="logo"><img src="../mark.png" alt="Garage Gym" class="logoimg"><span class="wm">GARAGE<b>GYM</b></span><span style="background:#7c5cff;color:#fff;font-size:.5rem;padding:2px 5px;border-radius:5px;margin-left:6px;letter-spacing:.5px;">SANDBOX</span><span class="sdot" id="syncDot"></span></div>
   <div class="userswitch" id="userSwitch"></div>
 </div>
 
@@ -733,7 +737,7 @@ const EQ_LABEL={rack:'Squat rack',bb:'Olympic barbell + plates',bench:'Flat benc
 const EQ_CARDIO={rower:'Rowing machine',bike:'Exercise bike',tread:'Treadmill',ellip:'Elliptical',rope:'Skipping rope'};
 
 const KEY='garageGymTracker_DEV', OLDKEY='__none__';
-const PALETTE=['#e03a3a','#2bb3a3','#f0b429','#7c5cff','#3a6ea5','#e0743a'];
+const PALETTE=['#ff5029','#39b6d6','#f0b429','#7c5cff','#4f8bd6','#e0743a'];
 const TEMPLATES=[
  {key:'A',bdg:'DAY A',group:'core',name:'Lower — Squat',sub:'quads · glutes · core',color:'#e03a3a',items:[
    {ex:'Back Squat',sets:4,tgt:'5–8'},{ex:'Front Squat',sets:3,tgt:'6–10'},{ex:'Reverse Lunge',sets:3,tgt:'10/leg'},{ex:'Calf Raise',sets:3,tgt:'12–15'},{ex:'Hanging Leg Raise',sets:3,tgt:'10–15'}]},
@@ -844,12 +848,15 @@ const AVOID_HIT={
   wrists:['Front Squat','Clean','Snatch','Push-Up','Handstand','Zercher','Renegade']
 };
 const PULL_MOVES=['Pull-Up','Chin-Up','Muscle-Up','Toes-to-Bar','Knees-to-Elbows','Commando'];
+/* technical / high-skill lifts — kept away from brand-new lifters */
+const TECH=new Set(['Power Clean','Hang Squat Clean','Hang Power Clean','Clean & Jerk','Snatch','Power Snatch','Push Jerk','Split Jerk','Jerk','Overhead Squat','Zercher Squat','Rack Pull','Muscle-Up','Muscle-Up Negative','Handstand Push-Up','Wall Walk','Pistol Squat','Turkish Get-Up','KB Bent Press','KB Snatch','KB Windmill','Bent Press','Thruster','DB Snatch','KB High Pull','Box Jump','Jump Squat','Burpee','Skull Crusher','JM Press']);
 function blocked(name,q){
   q=q||quizOr();
   if(q.pull!=='yes'&&PULL_MOVES.some(p=>name.includes(p))){
     if(q.pull==='no') return true;
     if(!/Negative|Scapular|Dead Hang/i.test(name)) return true;   // assisted: negatives & holds only
   }
+  if(q.level==='new'&&TECH.has(name)) return true;
   return (q.avoid||[]).some(a=>(AVOID_HIT[a]||[]).some(s=>name.includes(s)));
 }
 const pickable=e=>avail(e)&&!blocked(e.n);
@@ -1113,6 +1120,7 @@ function renderUserList(){
 
 /* ================= entry writes ================= */
 function addEntry(e){
+  if(!e.kind) e.kind='lift';
   db.entries.push(e); persist();
   queueOp('POST','entries',[entryRow(e)]);
 }
@@ -2298,7 +2306,7 @@ let charts={};
 function mkChart(id,cfg){
   if(charts[id]){ charts[id].destroy(); delete charts[id]; }
   if(typeof Chart==='undefined') return;
-  Chart.defaults.color='#8d939b'; Chart.defaults.borderColor='#2c3138';
+  Chart.defaults.color='#8ea6c6'; Chart.defaults.borderColor='#254063';
   const el=document.getElementById(id);
   if(el) charts[id]=new Chart(el,cfg);
 }
