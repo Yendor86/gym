@@ -966,7 +966,7 @@ function renderHhCard(){
       </div>`;
   }else{
     el.innerHTML=`<div class="muted" style="font-size:.83rem;">Not syncing. Create or join a household so all phones share data.</div>
-      <button onclick="document.getElementById('hhOverlay').style.display='flex'" style="margin-top:10px;">Set up sync</button>`;
+      <button onclick="openOverlay('hhOverlay')" style="margin-top:10px;">Set up sync</button>`;
   }
 }
 
@@ -1022,14 +1022,35 @@ function setAccent(){
 /* ================= nav ================= */
 let activePanel='home';
 document.querySelectorAll('nav .ni').forEach(n=>{ n.onclick=()=>showPanel(n.dataset.p); });
-function showPanel(p){
+function applyPanel(p){
   activePanel=p;
   document.querySelectorAll('nav .ni').forEach(x=>x.classList.toggle('active',x.dataset.p===p));
   document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
   const el=document.getElementById('panel-'+p);
   if(el) el.classList.add('active');
+  window.scrollTo(0,0);
   renderAll();
 }
+function showPanel(p){
+  if(p===activePanel){ applyPanel(p); return; }
+  applyPanel(p);
+  try{ history.pushState({panel:p},'','#'+p); }catch(e){}
+}
+function openOverlay(id){
+  document.getElementById(id).style.display='flex';
+  try{ history.pushState({panel:activePanel,overlay:id},'','#'+activePanel); }catch(e){}
+}
+function closeOverlay(id){
+  document.getElementById(id).style.display='none';
+  if(history.state&&history.state.overlay===id) history.back();
+}
+window.addEventListener('popstate',ev=>{
+  const open=[...document.querySelectorAll('.overlay')].find(o=>o.style.display==='flex');
+  if(open){ open.style.display='none'; return; }          // back closes an overlay first
+  const p=(ev.state&&ev.state.panel)||'home';
+  if(p===activePanel&&p!=='home'){ applyPanel('home'); return; }
+  applyPanel(p);
+});
 
 /* ================= users ================= */
 function renderUsers(){
@@ -1349,7 +1370,10 @@ function buildItems(groups,opts){
   const items=[], used=new Set(opts.used||[]);
   const focus=q.focus||[];
   let cost=0;
-  const cand=(g,type)=>EXLIB.filter(e=>pickable(e)&&!used.has(e.n)&&e.t===type&&e.g.includes(g))
+  const fam=n=>n.replace(/^(KB|DB|Barbell|Single-Arm|Single-Leg|Bodyweight|Weighted|Incline|Close-Grip|Seated|Standing|Alternating|Cross-Body|Reverse|Front|Rear|Wide|Diamond|Archer|Decline)\s+/i,'')
+    .replace(/\s+(Machine|Press|Raise)$/i,m=>m).trim().toLowerCase();
+  const usedFam=new Set([...used].map(fam));
+  const cand=(g,type)=>EXLIB.filter(e=>pickable(e)&&!used.has(e.n)&&!usedFam.has(fam(e.n))&&e.t===type&&e.g.includes(g))
     .sort((a,b)=>(a.g.indexOf(g)-b.g.indexOf(g))||(Math.random()-0.5));
   const push=(e,type)=>{
     let sets=type==='c'?setsC:setsI;
@@ -1358,7 +1382,7 @@ function buildItems(groups,opts){
     const c=sets*(e.ps?70:40)+(sets-1)*rest;
     if(cost+c>budget) return false;
     items.push({ex:e.n,sets,tgt:(type==='c'?p.repC:p.repI)+(e.ps?'/side':''),rest:Math.round(rest)});
-    used.add(e.n); cost+=c; return true;
+    used.add(e.n); usedFam.add(fam(e.n)); cost+=c; return true;
   };
   for(const g of groups){ const c=cand(g,'c'); if(c.length) push(c[0],'c'); }
   for(const g of groups){ const c=cand(g,'c'); if(c.length&&groups.length<3) push(c[0],'c'); }
@@ -1428,7 +1452,7 @@ function openPreview(p){
 }
 function previewTemplate(key){
   const t=TEMPLATES.find(x=>x.key===key);
-  const pick=myCardio()[0]||{n:'Walk'};
+  const mc=myCardio(); const pick=mc.find(c=>c.m)||mc[0]||{n:'Walk'};
   openPreview({name:t.name, key, src:'template',
     items:t.items.map(it=> it.ex==='__CARDIO__'
       ? {ex:pick.n,cardio:true,mins:20,intensity:'moderate'}
@@ -1492,7 +1516,7 @@ function swapEx(i){
   };
   document.getElementById('pickSearch').value='';
   document.getElementById('pickTitle').textContent='Swap '+it.ex+' for…';
-  document.getElementById('pickOverlay').style.display='flex';
+  openOverlay('pickOverlay');
   renderPicker();
 }
 let pickCb=null, pickAll=false, pickList=null, pickCbCardio=null;
@@ -1510,7 +1534,7 @@ function addExercisePicker(){
     renderPreview();
   };
   document.getElementById('pickSearch').value='';
-  document.getElementById('pickOverlay').style.display='flex';
+  openOverlay('pickOverlay');
   renderPicker();
 }
 const CARDIO_EQ={'Rowing Machine':'rower','Exercise Bike':'bike','Treadmill':'tread','Elliptical':'ellip','Skipping':'rope','Spin Class':'bike','Stair Climber':null,'Ski Erg':null,'Air Bike':null};
@@ -1781,7 +1805,7 @@ function addCustomExercise(){
     saveW(); renderWorkout();
   };
   document.getElementById('pickSearch').value='';
-  document.getElementById('pickOverlay').style.display='flex';
+  openOverlay('pickOverlay');
   renderPicker();
 }
 function finishWorkout(){
@@ -1861,7 +1885,7 @@ function openQuiz(){
   qAvoidSel=[...(q.avoid||[])]; qFocusSel=[...(q.focus||[])];
   renderQuizChips();
   document.getElementById('quizTitle').textContent='Tune workouts for '+cu().name;
-  document.getElementById('quizOverlay').style.display='flex';
+  openOverlay('quizOverlay');
 }
 function saveQuiz(){
   const quiz=db.meta.quiz||{};
@@ -2119,7 +2143,7 @@ function addExerciseTo(d){
     renderSessions();
   };
   document.getElementById('pickSearch').value='';
-  document.getElementById('pickOverlay').style.display='flex';
+  openOverlay('pickOverlay');
   renderPicker();
 }
 function moveSession(from,to){
@@ -2397,6 +2421,7 @@ function saveFirstUser(){
   if(!db.hh) document.getElementById('hhOverlay').style.display='flex';
 }
 setAccent();
+try{ history.replaceState({panel:'home'},'','#home'); }catch(e){}
 renderTimerSeg();
 const hadWorkout=restoreW();
 renderAll();
