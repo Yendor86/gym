@@ -1337,7 +1337,7 @@ function renderBuilder(){
     `<div class="chip ${selGroups.includes(g)?'on':''}" onclick="toggleGroup('${g}')">${GLABEL[g]}</div>`).join('');
   document.getElementById('cardioAddChips').innerHTML=
     `<div class="chip ${cardioAdd?'':'on'}" onclick="cardioAdd=null;renderBuilder()">None</div>`+
-    myCardio().slice(0,6).map(c=>`<div class="chip ${cardioAdd&&cardioAdd.n===c.n?'on':''}" onclick="cardioAdd={n:'${c.n}',mins:15};renderBuilder()">${c.i} ${c.n}</div>`).join('')+
+    myCardio().map(c=>`<div class="chip ${cardioAdd&&cardioAdd.n===c.n?'on':''}" onclick="cardioAdd={n:'${c.n}',mins:15};renderBuilder()">${c.i} ${c.n}</div>`).join('')+
     (cardioAdd?`<div class="chip sugg" onclick="cardioAdd.mins=({10:15,15:20,20:30,30:10})[cardioAdd.mins]||15;renderBuilder()">${cardioAdd.mins} min ⇄</div>`:'');
   const sg=staleGroups(selGroups).filter(x=>x.days>=7);
   document.getElementById('suggChip').innerHTML=(sg.length&&selGroups.length)?
@@ -1360,18 +1360,18 @@ function buildItems(groups,opts){
   opts=opts||{};
   const q=quizOr(), p=PARAMS[q.goal];
   let setsC=q.level==='new'?Math.max(2,p.sets-1):p.sets;
-  let mins=opts.dur||q.dur;
+  let mins=(opts.dur||q.dur)-(opts.reserve||0);
   const v=opts.vibe||'ok';
   if(v==='fresh') setsC+=1;
   if(v==='sore'){ setsC=Math.max(2,setsC-1); }
   if(v==='quick') mins=Math.min(mins,30);
   const setsI=Math.max(2,setsC-1);
-  const budget=mins*60-300;
+  const budget=Math.max(12,mins)*60-120;
   const items=[], used=new Set(opts.used||[]);
   const focus=q.focus||[];
   let cost=0;
-  const fam=n=>n.replace(/^(KB|DB|Barbell|Single-Arm|Single-Leg|Bodyweight|Weighted|Incline|Close-Grip|Seated|Standing|Alternating|Cross-Body|Reverse|Front|Rear|Wide|Diamond|Archer|Decline)\s+/i,'')
-    .replace(/\s+(Machine|Press|Raise)$/i,m=>m).trim().toLowerCase();
+  const MODS=/\b(kb|db|barbell|dumbbell|kettlebell|single-arm|single-leg|bodyweight|weighted|incline|decline|close-grip|wide|diamond|archer|seated|standing|alternating|cross-body|floor|bench|cable|band|goblet|sumo|pause|eccentric|straight-bar|chest-to-bar|commando|negative|scapular|hang|power|crush|grip)\b/gi;
+  const fam=n=>n.toLowerCase().replace(MODS,' ').replace(/[^a-z ]/g,' ').replace(/\s+/g,' ').trim();
   const usedFam=new Set([...used].map(fam));
   const cand=(g,type)=>EXLIB.filter(e=>pickable(e)&&!used.has(e.n)&&!usedFam.has(fam(e.n))&&e.t===type&&e.g.includes(g))
     .sort((a,b)=>(a.g.indexOf(g)-b.g.indexOf(g))||(Math.random()-0.5));
@@ -1395,7 +1395,8 @@ function buildItems(groups,opts){
 }
 function generateWorkout(){
   if(!selGroups.length&&!cardioAdd){ toast('Pick a muscle group or add cardio'); return; }
-  const {items}=buildItems(selGroups,{vibe});
+  const prepMins=(db.meta.prep===false?0:10);
+  const {items}=buildItems(selGroups,{vibe,reserve:prepMins+(cardioAdd?cardioAdd.mins:0)});
   if(!items.length&&!cardioAdd){ toast('Nothing fits — check equipment & profile in More'); return; }
   const all=items.slice();
   if(cardioAdd) all.push({ex:cardioAdd.n,cardio:true,mins:cardioAdd.mins,intensity:'moderate'});
@@ -1416,8 +1417,8 @@ function buildMyWeek(){
   let used=new Set(), made=[];
   const all=(db.meta.workouts||[]).filter(w=>!/^Plan · /.test(w.name));
   split.forEach(([name,groups],i)=>{
-    let r=buildItems(groups,{used});
-    if(r.items.length<3){ used=new Set(); r=buildItems(groups,{}); }   // reset pool if we ran dry
+    let r=buildItems(groups,{used,reserve:(db.meta.prep===false?0:10)});
+    if(r.items.length<3){ used=new Set(); r=buildItems(groups,{reserve:(db.meta.prep===false?0:10)}); }   // reset pool if we ran dry
     r.used.forEach(x=>used.add(x));
     if(r.items.length){
       all.push({id:uid(),name:'Plan · Day '+(i+1)+' — '+name,items:r.items.map(it=>({ex:it.ex,sets:it.sets,tgt:it.tgt,rest:it.rest})),est:estTime(r.items)});
@@ -1540,7 +1541,9 @@ function addExercisePicker(){
 const CARDIO_EQ={'Rowing Machine':'rower','Exercise Bike':'bike','Treadmill':'tread','Elliptical':'ellip','Skipping':'rope','Spin Class':'bike','Stair Climber':null,'Ski Erg':null,'Air Bike':null};
 function myCardio(){
   const q=getEquip();
-  return CARDIO.filter(c=>{ const k=CARDIO_EQ[c.n]; return k===undefined||k===null?!c.m:q[k]; });
+  const list=CARDIO.filter(c=>{ const k=CARDIO_EQ[c.n]; return k===undefined||k===null?!c.m:q[k]; });
+  // machines you actually own come first, then walking/outdoor
+  return list.sort((a,b)=>(b.m?1:0)-(a.m?1:0));
 }
 function renderPicker(){
   const s=(document.getElementById('pickSearch').value||'').toLowerCase();
