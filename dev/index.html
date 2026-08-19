@@ -1347,7 +1347,7 @@ function renderBuilder(){
     `<div class="chip ${cardioAdd?'':'on'}" onclick="cardioAdd=null;renderBuilder()">None</div>`+
     myCardio().map(c=>`<div class="chip ${cardioAdd&&cardioAdd.n===c.n?'on':''}" onclick="cardioAdd={n:'${c.n}',mins:15};renderBuilder()">${c.i} ${c.n}</div>`).join('')+
     (cardioAdd?'<div style="width:100%; height:2px;"></div>'+[5,10,15,20,25,30,40,45,60,75,90].map(m=>
-      `<div class="chip wchip ${cardioAdd.mins===m?'on':''}" onclick="cardioAdd.mins=${m};renderBuilder()">${m>=60?(m/60)+(m%60?'h'+(m%60):'h'):m+' min'}</div>`).join('')
+      `<div class="chip wchip ${cardioAdd.mins===m?'on':''}" onclick="cardioAdd.mins=${m};renderBuilder()">${m<60?m+' min':(Math.floor(m/60)+'h'+(m%60?' '+(m%60):''))}</div>`).join('')
      +`<div class="chip wchip" onclick="const v=parseInt(prompt('Minutes:',cardioAdd.mins)); if(v>0){cardioAdd.mins=v;renderBuilder();}">+ other</div>`:'');
   const sg=staleGroups(selGroups).filter(x=>x.days>=7);
   document.getElementById('suggChip').innerHTML=(sg.length&&selGroups.length)?
