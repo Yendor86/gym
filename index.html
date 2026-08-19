@@ -1014,6 +1014,12 @@ function removeEntry(id){
   db.entries=db.entries.filter(x=>x.id!==id); persist();
   queueOp('DELETE','entries?id=eq.'+encodeURIComponent(id));
 }
+function updateEntry(id,fields){
+  const e=db.entries.find(x=>x.id===id);
+  if(!e) return;
+  Object.assign(e,fields); persist();
+  queueOp('POST','entries',[entryRow(e)]);   // upsert on id = update
+}
 
 /* ================= history analysis ================= */
 function groupLastTrained(){
@@ -1826,7 +1832,40 @@ function saveBW(){
   document.getElementById('fBw').value='';
   toast('Bodyweight logged ✓'); renderAll();
 }
-let histMode='sessions', openSesh={};
+let histMode='sessions', openSesh={}, editSesh={};
+function addSetTo(d,ex){
+  const same=mine().filter(e=>e.date===d&&e.ex===ex);
+  const last=same[same.length-1]||{};
+  addEntry({id:uid(),user:db.current,ex,wt:last.wt||0,reps:last.reps||0,sets:1,date:d,notes:'',day:last.day||null});
+  renderSessions();
+}
+function addExerciseTo(d){
+  pickList=null;
+  document.getElementById('pickTitle').textContent='Add exercise to this session';
+  pickCb=(name)=>{
+    const tag=(mine().filter(e=>e.date===d).find(e=>e.day)||{}).day||null;
+    addEntry({id:uid(),user:db.current,ex:name,wt:0,reps:0,sets:1,date:d,notes:'',day:tag});
+    renderSessions();
+  };
+  document.getElementById('pickSearch').value='';
+  document.getElementById('pickOverlay').style.display='flex';
+  renderPicker();
+}
+function moveSession(from,to){
+  if(!to||to===from) return;
+  const es=mine().filter(e=>e.date===from);
+  if(!confirm('Move all '+es.length+' sets from '+from+' to '+to+'?')) { renderSessions(); return; }
+  es.forEach(e=>updateEntry(e.id,{date:to}));
+  openSesh[to]=true; editSesh[to]=editSesh[from]; delete openSesh[from]; delete editSesh[from];
+  renderSessions(); toast('Session moved to '+to);
+}
+function deleteSession(d){
+  const es=mine().filter(e=>e.date===d);
+  if(!confirm('Delete this entire session? '+es.length+' sets will be removed permanently.')) return;
+  es.forEach(e=>removeEntry(e.id));
+  delete openSesh[d]; delete editSesh[d];
+  renderSessions(); renderAll(); toast('Session deleted');
+}
 const DAYNAME=k=>{ const t=TEMPLATES.find(x=>x.key===k); return t? t.name : (k==='CUSTOM'?'Custom':k); };
 function renderSessions(){
   const wrap=document.getElementById('sessionList');
@@ -1857,7 +1896,18 @@ function renderSessions(){
         <div class="ton">${kgShort(ton)}<small>lifted</small></div>
       </div>
       <div class="sesh-b">
-        ${exNames.map(ex=>{
+        ${editSesh[d]? exNames.map(ex=>`
+          <div class="exline">
+            <div class="en">${esc(ex)}
+              <button class="ghost mini" style="float:right; padding:4px 9px; font-size:.72rem;" onclick="addSetTo('${d}','${esc(ex).replace(/'/g,"\\'")}')">+ set</button></div>
+            ${byEx[ex].map(s=>`
+              <div class="setrow" style="padding:6px 0;">
+                <input type="number" inputmode="decimal" step="0.5" value="${s.wt||''}" placeholder="kg" onchange="updateEntry('${s.id}',{wt:parseFloat(this.value)||0});renderSessions()">
+                <input type="number" inputmode="numeric" value="${s.reps||''}" placeholder="reps" onchange="updateEntry('${s.id}',{reps:parseInt(this.value)||0});renderSessions()">
+                <button class="rm" onclick="if(confirm('Delete this set?')){removeEntry('${s.id}');renderSessions();}">✕</button>
+              </div>`).join('')}
+          </div>`).join('')
+        : exNames.map(ex=>{
           const sets=byEx[ex];
           const detail=sets.map(s=>(s.wt?fmt(s.wt)+'×'+s.reps:s.reps+' reps')+(pbs.has(s.id)?' 🏆':'')).join(' · ');
           const best=sets.reduce((a,b)=>score(b)>score(a)?b:a);
@@ -1866,7 +1916,18 @@ function renderSessions(){
             <div class="es">${detail}${best.wt?' · best e1RM '+fmt(e1rm(best.wt,best.reps))+'kg':''}</div>
           </div>`;
         }).join('')}
-        <button class="ghost mini" style="margin-top:10px;" onclick="event.stopPropagation();repeatSession('${d}')">🔁 Do this workout again</button>
+        ${editSesh[d]?`
+          <label style="margin-top:12px;">Session date</label>
+          <input type="date" value="${d}" onchange="moveSession('${d}',this.value)">
+          <div class="row" style="margin-top:10px;">
+            <button class="ghost mini" onclick="addExerciseTo('${d}')">+ exercise</button>
+            <button class="mini" onclick="editSesh['${d}']=false;renderSessions();toast('Changes saved ✓')">Done editing</button>
+          </div>
+          <button class="ghost mini" style="width:100%; margin-top:8px; color:var(--u);" onclick="deleteSession('${d}')">Delete whole session</button>`
+        :`<div class="row" style="margin-top:10px;">
+            <button class="ghost mini" onclick="event.stopPropagation();repeatSession('${d}')">🔁 Repeat</button>
+            <button class="ghost mini" onclick="event.stopPropagation();editSesh['${d}']=true;renderSessions()">✏️ Edit</button>
+          </div>`}
       </div>
     </div>`;
   }).join('');
