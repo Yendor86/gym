@@ -1336,7 +1336,7 @@ function openBuilder(pre){
   showPanel('build');
   document.querySelectorAll('nav .ni').forEach(x=>x.classList.remove('active'));
 }
-let vibe='ok', cardioAdd=null;
+let vibe='ok', cardioAdds=[];
 const VIBES={fresh:'💪 Fresh — bring it',ok:'👍 Normal',sore:'😮‍💨 Sore / tired',quick:'⏱ Short on time'};
 function renderBuilder(){
   const q=quizOr();
@@ -1347,15 +1347,36 @@ function renderBuilder(){
     `<div class="chip" onclick='selGroups=${JSON.stringify(QUICKS)}["${k}"].slice();renderBuilder()'>${k}</div>`).join('');
   document.getElementById('groupChips').innerHTML=GROUPS.map(g=>
     `<div class="chip ${selGroups.includes(g)?'on':''}" onclick="toggleGroup('${g}')">${GLABEL[g]}</div>`).join('');
+  const MINOPTS=[5,10,15,20,25,30,40,45,60,75,90];
+  const minLabel=m=>m<60?m+' min':(Math.floor(m/60)+'h'+(m%60?' '+(m%60):''));
   document.getElementById('cardioAddChips').innerHTML=
-    `<div class="chip ${cardioAdd?'':'on'}" onclick="cardioAdd=null;renderBuilder()">None</div>`+
-    myCardio().map(c=>`<div class="chip ${cardioAdd&&cardioAdd.n===c.n?'on':''}" onclick="cardioAdd={n:'${c.n}',mins:15};renderBuilder()">${c.i} ${c.n}</div>`).join('')+
-    (cardioAdd?'<div style="width:100%; height:2px;"></div>'+[5,10,15,20,25,30,40,45,60,75,90].map(m=>
-      `<div class="chip wchip ${cardioAdd.mins===m?'on':''}" onclick="cardioAdd.mins=${m};renderBuilder()">${m<60?m+' min':(Math.floor(m/60)+'h'+(m%60?' '+(m%60):''))}</div>`).join('')
-     +`<div class="chip wchip" onclick="const v=parseInt(prompt('Minutes:',cardioAdd.mins)); if(v>0){cardioAdd.mins=v;renderBuilder();}">+ other</div>`:'');
+    myCardio().map(c=>{
+      const on=cardioAdds.some(x=>x.n===c.n);
+      return `<div class="chip ${on?'on':''}" onclick="toggleCardioAdd('${c.n.replace(/'/g,"\\'")}')">${c.i} ${c.n}${on?' ✓':''}</div>`;
+    }).join('')
+    + (cardioAdds.length? '<div style="width:100%;"></div>'+cardioAdds.map((x,i)=>{
+        const c=CARDIO.find(y=>y.n===x.n)||{i:'❤️'};
+        return `<div class="eqrow" style="width:100%; gap:8px; border-bottom:1px solid var(--line);">
+          <span style="flex:1;">${c.i} ${esc(x.n)}</span>
+          <select style="width:auto; padding:6px 8px;" onchange="cardioAdds[${i}].mins=parseInt(this.value);renderBuilder()">
+            ${MINOPTS.map(m=>`<option value="${m}"${x.mins===m?' selected':''}>${minLabel(m)}</option>`).join('')}
+            ${MINOPTS.includes(x.mins)?'':`<option value="${x.mins}" selected>${minLabel(x.mins)}</option>`}
+          </select>
+          <button class="ghost mini" style="width:auto;" onclick="cardioAdds[${i}].intensity=({easy:'moderate',moderate:'hard',hard:'easy'})[cardioAdds[${i}].intensity];renderBuilder()">${INTENSITY[x.intensity].l} ⇄</button>
+          <button class="ghost mini" style="width:auto;" onclick="cardioAdds.splice(${i},1);renderBuilder()">✕</button>
+        </div>`;
+      }).join('')
+      +`<div class="muted" style="font-size:.7rem; width:100%;">Total cardio: ${cardioAdds.reduce((a,x)=>a+x.mins,0)} min · they'll be added in this order</div>`
+    :'');
   const sg=staleGroups(selGroups).filter(x=>x.days>=7);
   document.getElementById('suggChip').innerHTML=(sg.length&&selGroups.length)?
     `<div class="chip sugg" onclick="toggleGroup('${sg[0].g}')">💡 add ${GLABEL[sg[0].g]} — ${sg[0].days>500?'never trained':sg[0].days+'d ago'}</div>`:'';
+}
+function toggleCardioAdd(n){
+  const i=cardioAdds.findIndex(x=>x.n===n);
+  if(i>=0) cardioAdds.splice(i,1);
+  else cardioAdds.push({n,mins:15,intensity:'moderate'});
+  renderBuilder();
 }
 function toggleGroup(g){
   selGroups=selGroups.includes(g)? selGroups.filter(x=>x!==g):[...selGroups,g];
@@ -1408,12 +1429,13 @@ function buildItems(groups,opts){
   return {items,used};
 }
 function generateWorkout(){
-  if(!selGroups.length&&!cardioAdd){ toast('Pick a muscle group or add cardio'); return; }
+  if(!selGroups.length&&!cardioAdds.length){ toast('Pick a muscle group or add cardio'); return; }
   const prepMins=(db.meta.prep===false?0:10);
-  const {items}=buildItems(selGroups,{vibe,reserve:prepMins+(cardioAdd?cardioAdd.mins:0)});
-  if(!items.length&&!cardioAdd){ toast('Nothing fits — check equipment & profile in More'); return; }
+  const cardioMins=cardioAdds.reduce((a,x)=>a+x.mins,0);
+  const {items}=buildItems(selGroups,{vibe,reserve:prepMins+cardioMins});
+  if(!items.length&&!cardioAdds.length){ toast('Nothing fits — check equipment & profile in More'); return; }
   const all=items.slice();
-  if(cardioAdd) all.push({ex:cardioAdd.n,cardio:true,mins:cardioAdd.mins,intensity:'moderate'});
+  cardioAdds.forEach(x=>all.push({ex:x.n,cardio:true,mins:x.mins,intensity:x.intensity||'moderate'}));
   const nm=(selGroups.length?selGroups.map(g=>GLABEL[g]).join(' & '):'Cardio')+' Session';
   openPreview({name:nm, items:all, src:'build'});
 }
@@ -1764,6 +1786,8 @@ function renderWorkout(){
       const done=!!it.sets[0].entryId, c=CARDIO.find(x=>x.n===it.ex);
       return `<div class="wex" style="border-color:${done?'var(--green)':'#e0743a'};">
         <div class="wex-h"><span class="n">${c?c.i:'❤️'} ${esc(it.ex)}</span><span class="tgt">${it.mins} min · ${INTENSITY[it.intensity].l}</span>
+          <button class="rm" style="width:auto; padding:0 3px;" onclick="moveW(${ii},-1)">▲</button>
+          <button class="rm" style="width:auto; padding:0 3px;" onclick="moveW(${ii},1)">▼</button>
           <button class="rm" style="width:auto; padding:0 4px; background:none; border:none; color:var(--muted);" onclick="removeExercise(${ii})">✕</button></div>
         <div class="setrow">
           <input type="number" value="${it.mins}" placeholder="min" onchange="W.items[${ii}].mins=parseInt(this.value)||0;saveW();renderWorkout()">
@@ -1778,6 +1802,8 @@ function renderWorkout(){
     }
     return `<div class="wex">
       <div class="wex-h"><span class="n">${it.ex}</span><span class="tgt">${it.tgt}</span>
+        <button class="rm" style="width:auto; padding:0 3px;" onclick="moveW(${ii},-1)" title="move up">▲</button>
+        <button class="rm" style="width:auto; padding:0 3px;" onclick="moveW(${ii},1)" title="move down">▼</button>
         <button class="rm" style="width:auto; padding:0 4px; background:none; border:none; color:var(--muted);" onclick="removeExercise(${ii})" title="remove exercise">✕</button></div>
       ${it.last?`<div class="lastinfo">Last: ${it.last.wt? fmt(it.last.wt)+'kg × '+it.last.reps : it.last.reps+' reps'} (${it.last.date})</div>`
         :(it.bw?'<div class="lastinfo">Bodyweight move — your bodyweight is pre-filled, add any extra load on top.</div>':'')}
@@ -1812,6 +1838,13 @@ function tickMob(ii){
   toast(it.ex+' done ✓');
 }
 function setField(ii,si,f,v){ W.items[ii].sets[si][f]=v; saveW(); }
+function moveW(ii,dir){
+  const j=ii+dir;
+  if(!W||j<0||j>=W.items.length) return;
+  if(W.items[ii].mob||W.items[j].mob) return;      // warm-up/cool-down stay put
+  const t=W.items[ii]; W.items[ii]=W.items[j]; W.items[j]=t;
+  saveW(); renderWorkout();
+}
 function addSet(ii){
   const it=W.items[ii], last=it.sets[it.sets.length-1];
   it.sets.push({wt:last?last.wt:'',reps:'',entryId:null});
