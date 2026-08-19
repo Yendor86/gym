@@ -151,6 +151,7 @@
   .prow .nm{font-weight:700; font-size:.92rem;}
   .prow .dt{color:var(--muted); font-size:.72rem; margin-top:1px;}
   .prow button{width:auto; padding:7px 10px; font-size:.85rem; margin:0; background:var(--card2); border:1px solid var(--line); color:var(--text);}
+  .prow button.ord{padding:2px 8px; font-size:.62rem; line-height:1.15;}
   .grptag{display:inline-block; font-size:.6rem; font-weight:800; text-transform:uppercase; letter-spacing:.4px; color:var(--muted); background:var(--card3); border-radius:4px; padding:1px 6px; margin-left:6px; vertical-align:1px;}
   .pickitem{display:block; width:100%; text-align:left; background:none; border:none; border-bottom:1px solid var(--line); border-radius:0; color:var(--text); padding:11px 4px; font-size:.92rem; font-weight:600;}
   .pickhead{color:var(--u); font-weight:800; font-size:.8rem; padding:12px 4px 4px;}
@@ -253,7 +254,10 @@
       <button class="ghost" onclick="addExercisePicker()">+ Add exercise</button>
       <button class="ghost" onclick="showPanel('train')">Back</button>
     </div>
-    <button class="ghost" id="prepBtn" style="margin-top:8px;" onclick="togglePrep()"></button>
+    <div class="row" style="margin-top:8px;">
+      <button class="ghost" onclick="autoOrder()">🎯 Best order</button>
+      <button class="ghost" id="prepBtn" onclick="togglePrep()"></button>
+    </div>
   </div>
   <div id="pFlag"></div>
   <div class="card" id="pList"></div>
@@ -1448,6 +1452,34 @@ function withPrep(items){
   return [warmFor(core),...core,coolFor(core)];
 }
 function hasPrep(){ return P&&P.items.some(i=>i.mob); }
+function moveItem(i,dir){
+  const j=i+dir;
+  if(j<0||j>=P.items.length) return;
+  if(P.items[i].mob||P.items[j].mob) return;      // warm-up stays first, cool-down last
+  const t=P.items[i]; P.items[i]=P.items[j]; P.items[j]=t;
+  renderPreview();
+}
+const BIG=['quads','hamstrings','glutes','back','chest'];
+function autoOrder(){
+  if(!P) return;
+  const warm=P.items.filter(i=>i.mob&&i.ex==='Warm-Up');
+  const cool=P.items.filter(i=>i.mob&&i.ex==='Cool-Down');
+  const core=P.items.filter(i=>!i.mob&&!i.cardio);
+  const cardio=P.items.filter(i=>i.cardio);
+  const rank=it=>{
+    const l=LIB[it.ex];
+    if(!l) return 5;
+    let r=l.t==='c'?0:2;                       // compounds before isolation
+    if(l.t==='c'&&l.g.some(g=>BIG.includes(g))) r=-1;   // big multi-joint lifts first
+    if(TECH.has(it.ex)) r-=1;                  // skill/power work while freshest
+    if(l.g.includes('core')) r=3;              // core last of the lifting
+    return r;
+  };
+  core.sort((a,b)=>rank(a)-rank(b));
+  P.items=[...warm,...core,...cardio,...cool];
+  renderPreview();
+  toast('Ordered: power → big lifts → accessories → core → cardio');
+}
 function togglePrep(){
   if(!P) return;
   P.items=hasPrep()? P.items.filter(i=>!i.mob) : withPrep(P.items);
@@ -1496,6 +1528,10 @@ function renderPreview(){
             <input type="number" value="${it.mins}" style="width:62px; padding:5px; display:inline-block;" onchange="P.items[${i}].mins=parseInt(this.value)||10;renderPreview()"> min ·
             <span style="color:var(--u); cursor:pointer;" onclick="P.items[${i}].intensity=({easy:'moderate',moderate:'hard',hard:'easy'})[P.items[${i}].intensity];renderPreview()">${INTENSITY[it.intensity].l} ⇄</span>
           </div></div>
+        <div style="display:flex; flex-direction:column; gap:2px;">
+          <button class="ord" onclick="moveItem(${i},-1)">▲</button>
+          <button class="ord" onclick="moveItem(${i},1)">▼</button>
+        </div>
         <button onclick="P.items.splice(${i},1);renderPreview()" title="remove">✕</button>
       </div>`;
     }
@@ -1504,7 +1540,11 @@ function renderPreview(){
     return `<div class="prow">
       <div style="flex:1;"><div class="nm">${bad?'⚠️ ':''}${it.ex}${l?'<span class="grptag">'+GLABEL[l.g[0]]+'</span>':''}</div>
         <div class="dt">${it.sets} × ${it.tgt} · rest ${Math.round((it.rest||90)/60*10)/10} min${alt?' · <span style="color:var(--u);">or '+esc(alt.n)+'</span>':''}</div></div>
-      <button onclick="swapEx(${i})" title="swap">⇄</button>
+      <div style="display:flex; flex-direction:column; gap:2px;">
+        <button class="ord" onclick="moveItem(${i},-1)" title="move up">▲</button>
+        <button class="ord" onclick="moveItem(${i},1)" title="move down">▼</button>
+      </div>
+      <button onclick="swapEx(${i})" title="swap exercise">⇄</button>
       <button onclick="P.items.splice(${i},1);renderPreview()" title="remove">✕</button>
     </div>`;}).join('')||'<div class="empty">Empty — add exercises below.</div>';
 }
