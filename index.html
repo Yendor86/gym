@@ -1417,7 +1417,7 @@ let W=null;
 const WKEY='gymActiveWorkout';
 function saveW(){
   try{
-    if(W) localStorage.setItem(WKEY,JSON.stringify({W,title:document.getElementById('wTitle').textContent,sub:document.getElementById('wSub').textContent,user:db.current,ts:Date.now()}));
+    if(W) localStorage.setItem(WKEY,JSON.stringify({W,title:document.getElementById('wTitle').textContent,sub:document.getElementById('wSub').textContent,user:db.current,ts:Date.now(),date:today()}));
     else localStorage.removeItem(WKEY);
   }catch(e){}
 }
@@ -1425,7 +1425,11 @@ function restoreW(){
   try{
     const s=JSON.parse(localStorage.getItem(WKEY));
     if(!s||!s.W) return false;
-    if(Date.now()-s.ts>36e5*18){ localStorage.removeItem(WKEY); return false; }
+    const logged=(s.W.items||[]).reduce((a,it)=>a+(it.sets||[]).filter(x=>x.entryId).length,0);
+    const age=Date.now()-s.ts;
+    // empty workouts expire after 3h, part-done ones after 18h
+    if(age>(logged?36e5*18:36e5*3)){ localStorage.removeItem(WKEY); return false; }
+    if(s.date&&s.date!==today()){ localStorage.removeItem(WKEY); return false; }   // never carry into a new day
     W=s.W;
     if(s.user!==undefined&&db.users.some(u=>u.idx===s.user)){ db.current=s.user; setAccent(); }
     document.getElementById('wTitle').textContent=s.title||'Workout';
@@ -1441,9 +1445,16 @@ function renderResume(){
     el.innerHTML=`<div style="font-size:1.4rem;">⏳</div>
       <div><div style="font-weight:800;">Workout in progress</div>
       <div class="muted" style="font-size:.76rem;">${esc(document.getElementById('wTitle').textContent)} · ${done} set${done===1?'':'s'} logged</div></div>
-      <div style="margin-left:auto; background:var(--u); color:#fff; font-weight:800; font-size:.8rem; padding:9px 16px; border-radius:10px;">RESUME</div>`;
+      <div style="margin-left:auto; background:var(--u); color:#fff; font-weight:800; font-size:.8rem; padding:9px 16px; border-radius:10px;">RESUME</div>
+      <button class="rm" style="width:auto; padding:6px 4px 6px 10px;" onclick="event.stopPropagation();dropWorkout()" title="discard">✕</button>`;
     el.onclick=()=>{ showPanel('workout'); };
   } else el.style.display='none';
+}
+function dropWorkout(){
+  const done=W?W.items.reduce((a,it)=>a+it.sets.filter(s=>s.entryId).length,0):0;
+  if(done&&!confirm('Discard this in-progress workout? Its '+done+' logged set(s) stay in your history.')) return;
+  stopTimer(); W=null; saveW(); renderAll();
+  toast('Workout cleared');
 }
 function lastBest(ex){
   const es=mine().filter(e=>e.ex===ex&&e.ex!=='Bodyweight');
