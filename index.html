@@ -2130,13 +2130,19 @@ async function loadLeague(){
         <div><b>${title}</b><div class="muted" style="font-size:.74rem;">${esc(w.name)}${w.code===db.hh?' — that\'s us!':''}</div></div>
         <div style="margin-left:auto;font-weight:800;color:var(--gold);">${fmtFn(w)}</div></div>`;
     };
+    const upForGrabs=(icon,title,hint)=>
+      `<div class="feeditem" style="opacity:.65;"><span class="medal">${icon}</span>
+        <div><b>${title}</b><div class="muted" style="font-size:.74rem;">unclaimed — ${hint}</div></div>
+        <div style="margin-left:auto;font-weight:800;color:var(--muted);">up for grabs</div></div>`;
     const medals=
       medal('t','🏋️','Heaviest House',h=>kgShort(h.t))+
       medal('sess','🔥','Most Sessions',h=>h.sess+' session'+(h.sess>1?'s':''))+
       medal('tpl','💪','Pound-for-Pound',h=>kgShort(h.tpl)+' / lifter')+
       medal('big','⚡','Biggest Lift',h=>kgShort(h.big)+' e1RM')+
-      medal('cpts','❤️','Most Active',h=>h.cpts+' pts · '+h.cmins+' min')+
-      medal('ckm','🚶','Furthest',h=>fmt(h.ckm)+' km');
+      (list.some(h=>h.cpts>0)? medal('cpts','❤️','Most Active',h=>h.cpts+' pts · '+h.cmins+' min')
+        : upForGrabs('❤️','Most Active','log a walk or any cardio'))+
+      (list.some(h=>h.ckm>0)? medal('ckm','🚶','Furthest',h=>fmt(h.ckm)+' km')
+        : upForGrabs('🚶','Furthest','add km to a walk, run or row'));
     const rowsHtml=list.slice().sort((a,b)=>b.t-a.t).map((h,i)=>{
       const me=h.code===db.hh;
       return `<tr${me?' style="color:var(--gold);"':''}>
