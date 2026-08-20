@@ -936,6 +936,7 @@ function createHousehold(){
   pushAllLocal();
   document.getElementById('hhOverlay').style.display='none';
   alert('Your household code is:\n\n'+db.hh+'\n\nOn the other phones: More tab → Join household → enter this code.');
+  askLeague();
   renderAll();
 }
 async function joinHousehold(){
@@ -957,11 +958,27 @@ async function joinHousehold(){
   }
   setAccent();
   toast('Joined '+code+' ✓');
+  askLeague();
   renderAll();
 }
 function leaveHousehold(){
   if(!confirm('Stop syncing this device? Data stays on the device and in the cloud.')) return;
   db.hh=null; db.outbox=[]; persist(); setSync('off'); renderAll();
+}
+function askLeague(){
+  if(db.meta.house&&db.meta.house.public) return;
+  if(db.meta.leagueAsked) return;
+  setMeta('leagueAsked',true);
+  const n=prompt('🏆 Join the House League?\n\nCompare your household against other houses each week — sessions, tonnage, biggest lift and cardio. Only weekly totals are shared, never individual logs.\n\nType a house name to join, or leave blank to skip (you can join later in More).','');
+  if(n&&n.trim()){ setMeta('house',{name:n.trim(),public:true}); toast('Welcome to the league, '+n.trim()+' 🏆'); }
+}
+function renderLeagueNudge(){
+  const el=document.getElementById('leagueTeaser');
+  const inLeague=db.meta.house&&db.meta.house.public;
+  el.innerHTML=inLeague
+    ? '🏆 <b>House League</b> — how does your gym stack up? <span class="muted" style="font-size:.78rem;">tap for the ladder</span>'
+    : '🏆 <b>Join the House League</b> — <span class="muted" style="font-size:.78rem;">your house isn\'t on the ladder yet. Tap to take on the other houses.</span>';
+  el.style.borderColor=inLeague?'':'var(--gold)';
 }
 function renderHhCard(){
   const el=document.getElementById('hhCard');
@@ -1162,6 +1179,7 @@ function nextDayKey(){
 }
 function renderHome(){
   renderResume();
+  renderLeagueNudge();
   const u=cu();
   const h=new Date().getHours();
   document.getElementById('greet').textContent=(h<12?'Morning':h<17?'Arvo':'Evening')+', '+u.name;
@@ -2111,6 +2129,7 @@ async function loadLeague(){
       const lifters=Math.max(1,+r.lifters||1);
       const t=+r.tonnage||0;
       return {name:h.value.name,code:h.household,t,sess:+r.sessions||0,lifters,big:+r.biglift||0,tpl:t/lifters,
+              heavy:+r.heaviest||0,heavyEx:r.heaviest_ex||'',heavyReps:+r.heaviest_reps||0,
               cmins:+r.cardio_mins||0,cpts:+r.cardio_pts||0,ckm:+r.cardio_km||0};
     });
     let champ='';
@@ -2138,7 +2157,7 @@ async function loadLeague(){
       medal('t','🏋️','Heaviest House',h=>kgShort(h.t))+
       medal('sess','🔥','Most Sessions',h=>h.sess+' session'+(h.sess>1?'s':''))+
       medal('tpl','💪','Pound-for-Pound',h=>kgShort(h.tpl)+' / lifter')+
-      medal('big','⚡','Biggest Lift',h=>kgShort(h.big)+' e1RM')+
+      medal('heavy','⚡','Biggest Lift',h=>fmt(h.heavy)+'kg'+(h.heavyReps?' × '+h.heavyReps:'')+(h.heavyEx?' · '+esc(h.heavyEx):''))+
       (list.some(h=>h.cpts>0)? medal('cpts','❤️','Most Active',h=>h.cpts+' pts · '+h.cmins+' min')
         : upForGrabs('❤️','Most Active','log a walk or any cardio'))+
       (list.some(h=>h.ckm>0)? medal('ckm','🚶','Furthest',h=>fmt(h.ckm)+' km')
